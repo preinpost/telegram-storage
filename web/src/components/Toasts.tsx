@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react';
+import { useT } from '../i18n';
 
 export type ToastKind = 'error' | 'success' | 'info';
 
@@ -15,6 +16,7 @@ interface ToastApi {
 const ToastContext = createContext<ToastApi | null>(null);
 
 export function ToastProvider({ children }: { children: ReactNode }) {
+  const t = useT();
   const [toasts, setToasts] = useState<Toast[]>([]);
   const nextId = useRef(1);
 
@@ -30,15 +32,15 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={{ push }}>
       {children}
       <div className="toasts" aria-live="polite">
-        {toasts.map((t) => (
+        {toasts.map((toast) => (
           <button
-            key={t.id}
+            key={toast.id}
             type="button"
-            className={`toast toast-${t.kind}`}
-            onClick={() => setToasts((all) => all.filter((x) => x.id !== t.id))}
-            title="닫기"
+            className={`toast toast-${toast.kind}`}
+            onClick={() => setToasts((all) => all.filter((x) => x.id !== toast.id))}
+            title={t('common.close')}
           >
-            {t.message}
+            {toast.message}
           </button>
         ))}
       </div>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError, setUnauthorizedHandler } from './api';
+import { I18nProvider, useT } from './i18n';
 import type { AuthConfig, User } from './types';
 import Browser from './components/Browser';
 import LoginPage from './components/LoginPage';
@@ -7,13 +8,16 @@ import { ToastProvider, useToasts } from './components/Toasts';
 
 export default function App() {
   return (
-    <ToastProvider>
-      <Root />
-    </ToastProvider>
+    <I18nProvider>
+      <ToastProvider>
+        <Root />
+      </ToastProvider>
+    </I18nProvider>
   );
 }
 
 function Root() {
+  const t = useT();
   const toasts = useToasts();
   const [config, setConfig] = useState<AuthConfig | null>(null);
   // undefined = still checking session; null = not logged in
@@ -46,7 +50,9 @@ function Root() {
           if (!(err instanceof ApiError) || err.status !== 401) {
             toasts.push(
               'error',
-              `인증 상태 확인 실패: ${err instanceof Error ? err.message : String(err)}`,
+              t('app.authCheckFailed', {
+                message: err instanceof Error ? err.message : String(err),
+              }),
             );
           }
           setUser(null);
@@ -75,9 +81,9 @@ function Root() {
       <div className="login-page">
         <div className="login-card">
           <h1>📁 Telegram Storage</h1>
-          <p className="login-error">서버에 연결할 수 없습니다. API 서버가 실행 중인지 확인하세요.</p>
+          <p className="login-error">{t('app.bootFailed')}</p>
           <button type="button" className="btn btn-primary" onClick={() => window.location.reload()}>
-            다시 시도
+            {t('common.retry')}
           </button>
         </div>
       </div>
@@ -88,7 +94,7 @@ function Root() {
     return (
       <div className="login-page">
         <div className="login-card">
-          <p className="login-hint">불러오는 중…</p>
+          <p className="login-hint">{t('common.loading')}</p>
         </div>
       </div>
     );

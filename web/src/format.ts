@@ -13,8 +13,12 @@ export function formatBytes(n: number): string {
   return `${text} ${units[unit]}`;
 }
 
-export function formatDate(iso: string): string {
+/**
+ * Format an ISO date for the given BCP-47 locale (e.g. 'ko-KR', 'en-US', 'ja-JP').
+ * Callers should pass the current UI language via `langToLocale()` from i18n.
+ */
+export function formatDate(iso: string, locale = 'ko-KR'): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' });
+  return d.toLocaleString(locale, { dateStyle: 'short', timeStyle: 'short' });
 }

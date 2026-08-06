@@ -1,0 +1,103 @@
+# telegram-storage Taskfile — 프로젝트 명령어 모음
+# 사용법: task <task명>  (task --list 로 전체 확인)
+
+version: '3'
+
+tasks:
+  default:
+    desc: 사용 가능한 태스크 목록 보기
+    cmds:
+      - task --list
+
+  # ── 설치 ──────────────────────────────────────────────
+  setup:
+    desc: 의존성 설치 (루트 + 웹)
+    cmds:
+      - npm install
+      - npm --prefix web install
+
+  # ── 개발 서버 ─────────────────────────────────────────
+  dev:
+    desc: API 서버 실행 (포트 3000, tsx watch)
+    cmds:
+      - npm run dev
+
+  dev:web:
+    desc: 웹 dev 서버 실행 (포트 5173, vite)
+    cmds:
+      - npm --prefix web run dev
+
+  dev:all:
+    desc: "API + 웹 동시 실행 (로그: tmp/api.log, tmp/web.log)"
+    cmds:
+      - cmd: mkdir -p tmp
+      - cmd: nohup npm run dev > tmp/api.log 2>&1 &
+        silent: true
+      - cmd: nohup npm --prefix web run dev > tmp/web.log 2>&1 &
+        silent: true
+      - cmd: 'sleep 3 && echo "API:  http://localhost:3000  (log: tmp/api.log)" && echo "WEB:  http://localhost:5173  (log: tmp/web.log)" && echo "종료: task stop"'
+        silent: true
+
+  stop:
+    desc: 실행 중인 API/웹 서버 모두 종료 (포트 3000, 5173)
+    cmds:
+      - cmd: |
+          for port in 3000 5173; do
+            pids=$(lsof -tiTCP:$port -sTCP:LISTEN 2>/dev/null)
+            if [ -n "$pids" ]; then kill $pids 2>/dev/null && echo "port $port 종료: $pids"; else echo "port $port: 실행 중 아님"; fi
+          done
+      - cmd: pkill -f "tsx watch src/index.ts" 2>/dev/null; pkill -f "web/node_modules/.bin/vite" 2>/dev/null; true
+        silent: true
+
+  # ── 프로덕션 실행 ─────────────────────────────────────
+  start:
+    desc: API 서버 프로덕션 모드 실행 (포트 3000)
+    cmds:
+      - npm run start
+
+  build:
+    desc: 웹 프로덕션 빌드 (tsc + vite) → web/dist
+    cmds:
+      - npm --prefix web run build
+
+  preview:
+    desc: 웹 빌드 결과 미리보기
+    deps:
+      - build
+    cmds:
+      - npm --prefix web run preview
+
+  # ── 검증 ──────────────────────────────────────────────
+  typecheck:
+    desc: 타입 체크 (루트 + 웹)
+    cmds:
+      - npm run typecheck
+      - npm --prefix web exec -- tsc --noEmit
+
+  test:
+    desc: 백엔드 테스트 실행 (vitest)
+    cmds:
+      - npm test
+
+  test:watch:
+    desc: 테스트 watch 모드
+    cmds:
+      - npm run test:watch
+
+  check:
+    desc: 전체 검증 (typecheck + test + build)
+    deps:
+      - typecheck
+      - test
+      - build
+
+  # ── 유틸 ──────────────────────────────────────────────
+  smoke:
+    desc: 스모크 테스트 실행 (업로드/다운로드/정합성)
+    cmds:
+      - npm run smoke
+
+  chatid:
+    desc: 텔레그램 chat id 조회
+    cmds:
+      - npm run chatid

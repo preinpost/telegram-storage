@@ -1,6 +1,7 @@
 import { useRef, useState, type ChangeEvent } from 'react';
 import { formatBytes, formatDate } from '../format';
-import type { FileItem } from '../types';
+import { langToLocale, useI18n } from '../i18n';
+import type { FileItem, FolderNode } from '../types';
 
 interface UploadState {
   key: string;
@@ -11,6 +12,8 @@ interface UploadState {
 
 interface Props {
   files: FileItem[] | null;
+  subFolders: FolderNode[];
+  onOpenFolder: (id: string) => void;
   canWrite: boolean;
   onUpload: (file: File, onProgress: (percent: number) => void) => Promise<void>;
   onDelete: (file: FileItem) => void | Promise<void>;
@@ -18,7 +21,8 @@ interface Props {
 
 let uploadSeq = 0;
 
-export default function FileList({ files, canWrite, onUpload, onDelete }: Props) {
+export default function FileList({ files, subFolders, onOpenFolder, canWrite, onUpload, onDelete }: Props) {
+  const { lang, t } = useI18n();
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploads, setUploads] = useState<UploadState[]>([]);
 
@@ -46,14 +50,16 @@ export default function FileList({ files, canWrite, onUpload, onDelete }: Props)
   };
 
   const confirmDelete = (file: FileItem) => {
-    if (window.confirm(`"${file.name}" 파일을 삭제할까요?`)) void onDelete(file);
+    if (window.confirm(t('file.deleteConfirm', { name: file.name }))) void onDelete(file);
   };
 
   return (
     <div className="file-panel">
       <div className="file-toolbar">
         <span className="file-count">
-          {files === null ? '불러오는 중…' : `파일 ${files.length}개`}
+          {files === null
+            ? t('common.loading')
+            : t('file.count', { folders: subFolders.length, files: files.length })}
         </span>
         {canWrite && (
           <>
@@ -65,7 +71,7 @@ export default function FileList({ files, canWrite, onUpload, onDelete }: Props)
               onChange={pickFiles}
             />
             <button type="button" className="btn btn-primary" onClick={() => inputRef.current?.click()}>
-              ⬆ 업로드
+              {t('file.upload')}
             </button>
           </>
         )}
@@ -83,16 +89,35 @@ export default function FileList({ files, canWrite, onUpload, onDelete }: Props)
                 />
               </div>
               <span className="upload-pct">
-                {u.failed ? '실패' : `${u.percent}%`}
+                {u.failed ? t('file.uploadFailedShort') : `${u.percent}%`}
               </span>
             </div>
           ))}
         </div>
       )}
 
-      {files !== null && files.length === 0 && (
+      {subFolders.length > 0 && (
+        <div className="folder-section">
+          {subFolders.map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              className="folder-row"
+              onClick={() => onOpenFolder(f.id)}
+            >
+              <span aria-hidden>📁</span>
+              <span className="folder-name" title={f.name}>
+                {f.name}
+              </span>
+              <span className={`role-badge ${f.role === 'admin' ? 'admin' : ''}`}>{f.role}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {files !== null && files.length === 0 && subFolders.length === 0 && (
         <div className="empty-state">
-          {canWrite ? '파일을 업로드해 보세요.' : '이 폴더에는 파일이 없습니다.'}
+          {canWrite ? t('file.emptyWrite') : t('file.emptyRead')}
         </div>
       )}
 
@@ -100,10 +125,10 @@ export default function FileList({ files, canWrite, onUpload, onDelete }: Props)
         <table className="file-table">
           <thead>
             <tr>
-              <th>이름</th>
-              <th className="col-size">크기</th>
-              <th className="col-date">수정일</th>
-              <th className="col-actions">작업</th>
+              <th>{t('file.nameCol')}</th>
+              <th className="col-size">{t('file.sizeCol')}</th>
+              <th className="col-date">{t('file.dateCol')}</th>
+              <th className="col-actions">{t('file.actionsCol')}</th>
             </tr>
           </thead>
           <tbody>
@@ -113,18 +138,18 @@ export default function FileList({ files, canWrite, onUpload, onDelete }: Props)
                   📄 {f.name}
                 </td>
                 <td className="col-size">{formatBytes(f.size)}</td>
-                <td className="col-date">{formatDate(f.updatedAt)}</td>
+                <td className="col-date">{formatDate(f.updatedAt, langToLocale(lang))}</td>
                 <td className="col-actions">
                   <a
                     className="btn btn-small"
                     href={`/api/files/${f.id}/download`}
-                    title="다운로드 (원본)"
+                    title={t('file.downloadTitle')}
                   >
-                    ⬇ 다운로드
+                    {t('file.download')}
                   </a>
                   {canWrite && (
                     <button type="button" className="btn btn-small danger" onClick={() => confirmDelete(f)}>
-                      🗑 삭제
+                      🗑 {t('common.delete')}
                     </button>
                   )}
                 </td>

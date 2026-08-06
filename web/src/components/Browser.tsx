@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, ApiError, errorMessage, uploadFile } from '../api';
+import { useT } from '../i18n';
 import type { FileItem, FolderNode, Permission, Role, User } from '../types';
 import FileList from './FileList';
 import FolderTree from './FolderTree';
 import PermissionsPanel from './PermissionsPanel';
+import SettingsModal from './SettingsModal';
 import { useToasts } from './Toasts';
 
 interface Props {
@@ -12,7 +14,9 @@ interface Props {
 }
 
 export default function Browser({ user, onLogout }: Props) {
+  const t = useT();
   const toasts = useToasts();
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [folders, setFolders] = useState<FolderNode[] | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [files, setFiles] = useState<FileItem[] | null>(null);
@@ -24,7 +28,7 @@ export default function Browser({ user, onLogout }: Props) {
       setFolders(res.folders);
     } catch (err) {
       setFolders([]);
-      toasts.push('error', errorMessage(err, '폴더 목록을 불러오지 못했습니다'));
+      toasts.push('error', errorMessage(err, t('browser.foldersLoadFailed')));
     }
   }, [toasts]);
 
@@ -42,6 +46,15 @@ export default function Browser({ user, onLogout }: Props) {
     if (selectedId !== null && folders !== null && !selected) setSelectedId(null);
   }, [folders, selectedId, selected]);
 
+  // Subfolders of the currently selected folder (top-level folders at root).
+  const subFolders = useMemo(
+    () => (selectedId === null ? (folders ?? []) : (selected?.children ?? [])),
+    [folders, selectedId, selected],
+  );
+
+  // Breadcrumb path from root to the selected folder (always includes root).
+  const path = useMemo(() => findPath(folders ?? [], selectedId), [folders, selectedId]);
+
   const selectedRole: Role = selected ? selected.role : user.role === 'admin' ? 'admin' : 'write';
   const isAdmin = selectedRole === 'admin';
   const canWrite = selectedRole === 'write' || isAdmin;
@@ -54,7 +67,7 @@ export default function Browser({ user, onLogout }: Props) {
       } catch (err) {
         setFiles([]);
         if (!(err instanceof ApiError && err.status === 403)) {
-          toasts.push('error', errorMessage(err, '파일 목록을 불러오지 못했습니다'));
+          toasts.push('error', errorMessage(err, t('browser.filesLoadFailed')));
         }
       }
     },
@@ -73,7 +86,7 @@ export default function Browser({ user, onLogout }: Props) {
       } catch (err) {
         setPermissions(null);
         if (!(err instanceof ApiError && err.status === 403)) {
-          toasts.push('error', errorMessage(err, '권한 목록을 불러오지 못했습니다'));
+          toasts.push('error', errorMessage(err, t('browser.permsLoadFailed')));
         }
       }
     },
@@ -93,9 +106,9 @@ export default function Browser({ user, onLogout }: Props) {
         const folder = await api.createFolder(name, parentId);
         await reloadFolders();
         setSelectedId(folder.id);
-        toasts.push('success', `폴더 "${folder.name}" 생성됨`);
+        toasts.push('success', t('folder.created', { name: folder.name }));
       } catch (err) {
-        toasts.push('error', errorMessage(err, '폴더 생성 실패'));
+        toasts.push('error', errorMessage(err, t('folder.createFailed')));
       }
     },
     [reloadFolders, toasts],
@@ -106,9 +119,9 @@ export default function Browser({ user, onLogout }: Props) {
       try {
         await api.renameFolder(id, name);
         await reloadFolders();
-        toasts.push('success', '폴더 이름이 변경되었습니다');
+        toasts.push('success', t('folder.renamed'));
       } catch (err) {
-        toasts.push('error', errorMessage(err, '폴더 이름 변경 실패'));
+        toasts.push('error', errorMessage(err, t('folder.renameFailed')));
         throw err;
       }
     },
@@ -121,9 +134,9 @@ export default function Browser({ user, onLogout }: Props) {
         await api.deleteFolder(id);
         if (selectedId === id) setSelectedId(null);
         await reloadFolders();
-        toasts.push('success', '폴더가 삭제되었습니다');
+        toasts.push('success', t('folder.deleted'));
       } catch (err) {
-        toasts.push('error', errorMessage(err, '폴더 삭제 실패'));
+        toasts.push('error', errorMessage(err, t('folder.deleteFailed')));
       }
     },
     [selectedId, reloadFolders, toasts],
@@ -135,10 +148,10 @@ export default function Browser({ user, onLogout }: Props) {
     async (file: File, onProgress: (percent: number) => void) => {
       try {
         const uploaded = await uploadFile(file, selectedId, onProgress);
-        toasts.push('success', `"${uploaded.name}" 업로드 완료`);
+        toasts.push('success', t('file.uploaded', { name: uploaded.name }));
         await reloadFiles(selectedId);
       } catch (err) {
-        toasts.push('error', errorMessage(err, '업로드 실패'));
+        toasts.push('error', errorMessage(err, t('file.uploadFailed')));
         throw err;
       }
     },
@@ -150,9 +163,9 @@ export default function Browser({ user, onLogout }: Props) {
       try {
         await api.deleteFile(file.id);
         await reloadFiles(selectedId);
-        toasts.push('success', `"${file.name}" 삭제됨`);
+        toasts.push('success', t('file.deleted', { name: file.name }));
       } catch (err) {
-        toasts.push('error', errorMessage(err, '파일 삭제 실패'));
+        toasts.push('error', errorMessage(err, t('file.deleteFailed')));
       }
     },
     [selectedId, reloadFiles, toasts],
@@ -166,9 +179,9 @@ export default function Browser({ user, onLogout }: Props) {
       try {
         await api.grantPermission(selectedId, userId, role);
         await reloadPermissions(selectedId);
-        toasts.push('success', `User #${userId} → ${role} 권한 부여됨`);
+        toasts.push('success', t('perm.granted', { userId, role: t(`role.${role}`) }));
       } catch (err) {
-        toasts.push('error', errorMessage(err, '권한 부여 실패'));
+        toasts.push('error', errorMessage(err, t('perm.grantFailed')));
         throw err;
       }
     },
@@ -181,9 +194,9 @@ export default function Browser({ user, onLogout }: Props) {
       try {
         await api.revokePermission(selectedId, userId);
         await reloadPermissions(selectedId);
-        toasts.push('success', `User #${userId} 권한 회수됨`);
+        toasts.push('success', t('perm.revoked', { userId }));
       } catch (err) {
-        toasts.push('error', errorMessage(err, '권한 회수 실패'));
+        toasts.push('error', errorMessage(err, t('perm.revokeFailed')));
       }
     },
     [selectedId, reloadPermissions, toasts],
@@ -214,10 +227,20 @@ export default function Browser({ user, onLogout }: Props) {
           </span>
           <span className={`role-badge ${user.role === 'admin' ? 'admin' : ''}`}>{user.role}</span>
           <button type="button" className="btn btn-small" onClick={() => void onLogout()}>
-            로그아웃
+            {t('common.logout')}
+          </button>
+          <button
+            type="button"
+            className="icon-btn gear-btn"
+            title={t('settings.openTitle')}
+            onClick={() => setSettingsOpen(true)}
+          >
+            ⚙️
           </button>
         </div>
       </header>
+
+      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
       <div className="layout">
         <aside className="sidebar">
@@ -234,13 +257,41 @@ export default function Browser({ user, onLogout }: Props) {
 
         <main className="main">
           <div className="current-folder">
-            <span className="current-label">현재 폴더:</span>
-            <span className="current-name">{selected ? selected.name : '루트'}</span>
-            {!selected && <span className="role-badge">쓰기</span>}
-            {selected && <span className="role-badge">{selected.role}</span>}
+            <nav className="breadcrumb" aria-label={t('browser.breadcrumbAria')}>
+              {path.map((seg, i) => {
+                const isLast = i === path.length - 1;
+                // The root crumb is translated at render time so it follows
+                // language switches without recomputing the memoized path.
+                const label = seg.id === null ? t('common.root') : seg.name;
+                return (
+                  <span key={seg.id ?? 'root'} className="crumb">
+                    {i > 0 && <span className="crumb-sep">/</span>}
+                    {isLast ? (
+                      <span className="crumb-current" title={label}>
+                        {label}
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="crumb-link"
+                        onClick={() => setSelectedId(seg.id)}
+                        title={t('browser.gotoFolder', { name: label })}
+                      >
+                        {label}
+                      </button>
+                    )}
+                  </span>
+                );
+              })}
+            </nav>
+            <span className={`role-badge ${selectedRole === 'admin' ? 'admin' : ''}`}>
+              {selectedRole}
+            </span>
           </div>
           <FileList
             files={files}
+            subFolders={subFolders}
+            onOpenFolder={setSelectedId}
             canWrite={canWrite}
             onUpload={handleUpload}
             onDelete={handleDeleteFile}
@@ -270,4 +321,24 @@ function findFolder(nodes: FolderNode[], id: string): FolderNode | null {
     if (found) return found;
   }
   return null;
+}
+
+function findPath(
+  nodes: FolderNode[],
+  id: string | null,
+): { id: string | null; name: string }[] {
+  // Path from root to the selected node; always starts with the root crumb.
+  // The root crumb's name is a placeholder — the render translates it via t().
+  const trail: { id: string | null; name: string }[] = [{ id: null, name: '' }];
+  const walk = (list: FolderNode[]): boolean => {
+    for (const n of list) {
+      trail.push({ id: n.id, name: n.name });
+      if (n.id === id) return true;
+      if (walk(n.children)) return true;
+      trail.pop();
+    }
+    return false;
+  };
+  if (id !== null) walk(nodes);
+  return trail;
 }

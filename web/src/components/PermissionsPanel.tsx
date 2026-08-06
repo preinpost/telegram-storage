@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
-import { ROLE_LABEL, type Permission, type Role } from '../types';
+import { useT } from '../i18n';
+import type { Permission, Role } from '../types';
 import { useToasts } from './Toasts';
 
 const ROLES: Role[] = ['read', 'write', 'admin'];
@@ -32,6 +33,7 @@ export default function PermissionsPanel({
   onRevoke,
   onRetry,
 }: Props) {
+  const t = useT();
   const toasts = useToasts();
   const [userId, setUserId] = useState('');
   const [role, setRole] = useState<Role>('read');
@@ -41,7 +43,7 @@ export default function PermissionsPanel({
     e.preventDefault();
     const id = userId.trim();
     if (!/^\d+$/.test(id)) {
-      toasts.push('error', '사용자 ID는 숫자여야 합니다');
+      toasts.push('error', t('perm.userIdNumeric'));
       return;
     }
     setBusy(true);
@@ -65,8 +67,8 @@ export default function PermissionsPanel({
   return (
     <div className="perm-panel">
       <div className="perm-header">
-        <span className="perm-title">권한 — {folderName}</span>
-        <span className="role-badge admin">관리</span>
+        <span className="perm-title">{t('perm.title', { name: folderName })}</span>
+        <span className="role-badge admin">{t('role.admin')}</span>
       </div>
 
       <form className="grant-form" onSubmit={submitGrant}>
@@ -75,34 +77,34 @@ export default function PermissionsPanel({
             className="grant-user"
             value={userId}
             onChange={(e) => setUserId(e.target.value)}
-            placeholder="사용자 ID (숫자)"
+            placeholder={t('perm.userIdPlaceholder')}
             inputMode="numeric"
             maxLength={12}
           />
           <select value={role} onChange={(e) => setRole(e.target.value as Role)}>
             {ROLES.map((r) => (
               <option key={r} value={r}>
-                {ROLE_LABEL[r]}
+                {t(`role.${r}`)}
               </option>
             ))}
           </select>
           <button type="submit" className="btn btn-small btn-primary" disabled={busy || !userId.trim()}>
-            부여
+            {t('perm.grant')}
           </button>
         </div>
       </form>
 
       <div className="perm-members">
-        <div className="perm-member owner" title="폴더 소유자는 항상 admin (변경/회수 불가)">
+        <div className="perm-member owner" title={t('perm.ownerTitle')}>
           <span>User #{ownerId}</span>
-          <span className="role-badge admin">소유자</span>
+          <span className="role-badge admin">{t('perm.owner')}</span>
         </div>
 
         {permissions === null && (
           <div className="perm-loading">
-            권한 목록을 불러오지 못했습니다.{' '}
+            {t('browser.permsLoadFailed')}.{' '}
             <button type="button" className="btn btn-small" onClick={onRetry}>
-              다시 시도
+              {t('common.retry')}
             </button>
           </div>
         )}
@@ -114,11 +116,11 @@ export default function PermissionsPanel({
               <select
                 value={p.role}
                 onChange={(e) => changeRole(p, e.target.value as Role)}
-                title="역할 변경"
+                title={t('perm.changeRole')}
               >
                 {ROLES.map((r) => (
                   <option key={r} value={r}>
-                    {ROLE_LABEL[r]}
+                    {t(`role.${r}`)}
                   </option>
                 ))}
               </select>
@@ -127,7 +129,7 @@ export default function PermissionsPanel({
                 className="btn btn-small danger"
                 onClick={() => void onRevoke(p.userId)}
               >
-                회수
+                {t('perm.revoke')}
               </button>
             </div>
           ))}
@@ -135,13 +137,13 @@ export default function PermissionsPanel({
 
       {knownUserIds.length > 0 && (
         <div className="known-users">
-          <span className="known-label">알려진 사용자:</span>
+          <span className="known-label">{t('perm.knownUsers')}</span>
           {knownUserIds.map((id) => (
             <button
               key={id}
               type="button"
               className="chip"
-              title="클릭해 부여 폼에 채우기"
+              title={t('perm.knownUsersTitle')}
               onClick={() => setUserId(id)}
             >
               User #{id}

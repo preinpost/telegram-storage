@@ -49,8 +49,5 @@ export interface Permission {
 
 export const ROLE_RANK: Record<Role, number> = { read: 1, write: 2, admin: 3 };
 
-export const ROLE_LABEL: Record<Role, string> = {
-  read: '읽기',
-  write: '쓰기',
-  admin: '관리',
-};
+// Human-readable role labels are i18n keys ('role.read' | 'role.write' | 'role.admin')
+// — use `t(\`role.${role}\`)` from src/i18n.tsx in components.

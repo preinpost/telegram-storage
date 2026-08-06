@@ -1,5 +1,6 @@
 import { useState, type KeyboardEvent } from 'react';
-import { ROLE_LABEL, ROLE_RANK, type FolderNode } from '../types';
+import { useT } from '../i18n';
+import { ROLE_RANK, type FolderNode } from '../types';
 
 interface Props {
   nodes: FolderNode[];
@@ -21,6 +22,7 @@ export default function FolderTree({
   onDelete,
   onSelect,
 }: Props) {
+  const t = useT();
   // createParent: undefined = form closed; null = root; string = folder id
   const [createParent, setCreateParent] = useState<string | null | undefined>(undefined);
   const [createName, setCreateName] = useState('');
@@ -67,7 +69,7 @@ export default function FolderTree({
   };
 
   const confirmDelete = (node: FolderNode) => {
-    if (window.confirm(`"${node.name}" 폴더와 그 안의 모든 하위 폴더/파일을 삭제할까요?`)) {
+    if (window.confirm(t('folder.deleteConfirm', { name: node.name }))) {
       void onDelete(node.id);
     }
   };
@@ -81,41 +83,41 @@ export default function FolderTree({
   };
 
   const targetName =
-    createParent === undefined ? '' : createParent === null ? '루트' : nodeName(nodes, createParent) ?? '?';
+    createParent === undefined ? '' : createParent === null ? t('common.root') : nodeName(nodes, createParent) ?? '?';
 
   return (
     <div className="tree-panel">
       <div className="tree-header">
-        <span className="tree-title">폴더</span>
+        <span className="tree-title">{t('folder.title')}</span>
         {canCreate && (
           <button
             type="button"
             className="btn btn-small"
             onClick={() => openCreate(selectedId)}
-            title="선택한 폴더 아래에 새 폴더 생성"
+            title={t('folder.newTitle')}
           >
-            + 새 폴더
+            {t('folder.new')}
           </button>
         )}
       </div>
 
       {createParent !== undefined && (
         <div className="tree-create">
-          <div className="tree-create-target">생성 위치: {targetName}</div>
+          <div className="tree-create-target">{t('folder.createAt', { name: targetName })}</div>
           <input
             value={createName}
             onChange={(e) => setCreateName(e.target.value)}
             onKeyDown={(e) => onKeyDown(e, submitCreate)}
-            placeholder="폴더 이름"
+            placeholder={t('folder.namePlaceholder')}
             autoFocus
             maxLength={255}
           />
           <div className="row-actions">
             <button type="button" className="btn btn-small btn-primary" onClick={submitCreate} disabled={busy || !createName.trim()}>
-              만들기
+              {t('common.create')}
             </button>
             <button type="button" className="btn btn-small" onClick={() => setCreateParent(undefined)}>
-              취소
+              {t('common.cancel')}
             </button>
           </div>
         </div>
@@ -127,11 +129,11 @@ export default function FolderTree({
           style={{ paddingLeft: 8 }}
         >
           <span className="tree-name" onClick={() => onSelect(null)}>
-            🗂 루트
+            🗂 {t('common.root')}
           </span>
-          <span className="role-badge">쓰기</span>
+          <span className="role-badge">{t('role.write')}</span>
         </div>
-        {nodes.length === 0 && <div className="tree-empty">폴더가 없습니다</div>}
+        {nodes.length === 0 && <div className="tree-empty">{t('folder.empty')}</div>}
         {nodes.map((node) => renderNode(node, 0))}
       </div>
     </div>
@@ -160,10 +162,10 @@ export default function FolderTree({
                 className="tree-rename-input"
               />
               <button type="button" className="btn btn-small btn-primary" onClick={() => submitRename(node.id)} disabled={busy}>
-                저장
+                {t('common.save')}
               </button>
               <button type="button" className="btn btn-small" onClick={() => setEditingId(null)}>
-                취소
+                {t('common.cancel')}
               </button>
             </>
           ) : (
@@ -171,21 +173,21 @@ export default function FolderTree({
               <span className="tree-name" onClick={() => onSelect(node.id)} title={node.name}>
                 📁 {node.name}
               </span>
-              <span className="role-badge" title={`권한: ${ROLE_LABEL[node.role]}`}>
+              <span className="role-badge" title={t('folder.roleTitle', { role: t(`role.${node.role}`) })}>
                 {node.role}
               </span>
               {canWrite && (
-                <button type="button" className="icon-btn" title="하위 폴더 생성" onClick={() => openCreate(node.id)}>
+                <button type="button" className="icon-btn" title={t('folder.createChildTitle')} onClick={() => openCreate(node.id)}>
                   ＋
                 </button>
               )}
               {canWrite && (
-                <button type="button" className="icon-btn" title="이름 변경" onClick={() => startRename(node)}>
+                <button type="button" className="icon-btn" title={t('folder.renameTitle')} onClick={() => startRename(node)}>
                   ✏️
                 </button>
               )}
               {isAdmin && (
-                <button type="button" className="icon-btn danger" title="삭제" onClick={() => confirmDelete(node)}>
+                <button type="button" className="icon-btn danger" title={t('common.delete')} onClick={() => confirmDelete(node)}>
                   🗑
                 </button>
               )}

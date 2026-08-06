@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api, errorMessage } from '../api';
+import { LANG_LABELS, useI18n, type Lang } from '../i18n';
 import type { AuthConfig, User } from '../types';
 import { useToasts } from './Toasts';
 
@@ -18,6 +19,7 @@ interface TelegramAuthData {
 }
 
 export default function LoginPage({ config, onLogin }: Props) {
+  const { lang, setLang, t } = useI18n();
   const toasts = useToasts();
 
   const handleTelegramAuth = useCallback(
@@ -34,33 +36,53 @@ export default function LoginPage({ config, onLogin }: Props) {
         const res = await api.telegramLogin(fields);
         onLogin(res.user);
       } catch (err) {
-        toasts.push('error', errorMessage(err, '텔레그램 로그인에 실패했습니다'));
+        toasts.push('error', errorMessage(err, t('login.telegramFailed')));
       }
     },
-    [onLogin, toasts],
+    [onLogin, toasts, t],
   );
 
   return (
     <div className="login-page">
       <div className="login-card">
         <h1>📁 Telegram Storage</h1>
-        <p className="login-sub">팀 파일 저장소</p>
+        <p className="login-sub">{t('login.subtitle')}</p>
         {config.devAuth ? (
           <DevLoginForm onLogin={onLogin} />
         ) : config.botUsername ? (
           <TelegramWidget botUsername={config.botUsername} onAuth={handleTelegramAuth} />
         ) : (
           <p className="login-error">
-            로그인 방법이 구성되지 않았습니다. 서버에서 <code>DEV_AUTH=true</code> 또는{' '}
-            <code>TELEGRAM_BOT_USERNAME</code>을 설정하세요.
+            {t('login.notConfiguredIntro')} <code>DEV_AUTH=true</code> {t('login.or')}{' '}
+            <code>TELEGRAM_BOT_USERNAME</code> {t('login.notConfiguredOutro')}
           </p>
         )}
+        <LoginLangSwitcher lang={lang} setLang={setLang} />
       </div>
     </div>
   );
 }
 
+/** Compact language switcher shown on the login card (settings modal covers the main app). */
+function LoginLangSwitcher({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
+  return (
+    <div className="login-langs">
+      {(Object.keys(LANG_LABELS) as Lang[]).map((l) => (
+        <button
+          key={l}
+          type="button"
+          className={`lang-link ${lang === l ? 'active' : ''}`}
+          onClick={() => setLang(l)}
+        >
+          {LANG_LABELS[l]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function DevLoginForm({ onLogin }: { onLogin: (user: User) => void }) {
+  const t = useI18n().t;
   const toasts = useToasts();
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -75,7 +97,7 @@ function DevLoginForm({ onLogin }: { onLogin: (user: User) => void }) {
       const res = await api.devLogin(name, displayName.trim() || undefined);
       onLogin(res.user);
     } catch (err) {
-      toasts.push('error', errorMessage(err, '로그인에 실패했습니다'));
+      toasts.push('error', errorMessage(err, t('login.failed')));
       setBusy(false);
     }
   };
@@ -83,24 +105,24 @@ function DevLoginForm({ onLogin }: { onLogin: (user: User) => void }) {
   return (
     <form className="login-form" onSubmit={submit}>
       <label className="field">
-        <span>사용자 이름</span>
+        <span>{t('login.username')}</span>
         <input
           value={username}
           onChange={(e) => setUsername(e.target.value)}
-          placeholder="예: alice"
+          placeholder={t('login.usernamePlaceholder')}
           autoFocus
           maxLength={64}
           required
         />
       </label>
       <label className="field">
-        <span>표시 이름 (선택)</span>
+        <span>{t('login.displayName')}</span>
         <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} maxLength={64} />
       </label>
       <button type="submit" className="btn btn-primary" disabled={busy || !username.trim()}>
-        {busy ? '로그인 중…' : '로그인'}
+        {busy ? t('login.signingIn') : t('login.signIn')}
       </button>
-      <p className="login-hint">개발 모드 (DEV_AUTH=true) — 첫 로그인 사용자는 admin이 됩니다.</p>
+      <p className="login-hint">{t('login.devModeHint')}</p>
     </form>
   );
 }
@@ -117,6 +139,7 @@ function TelegramWidget({
   botUsername: string;
   onAuth: (data: TelegramAuthData) => void;
 }) {
+  const t = useI18n().t;
   useEffect(() => {
     const w = window as unknown as { onTelegramAuth?: (data: TelegramAuthData) => void };
     w.onTelegramAuth = onAuth;
@@ -137,9 +160,9 @@ function TelegramWidget({
 
   return (
     <p className="login-hint">
-      텔레그램 계정으로 로그인하세요.
+      {t('login.telegramHint1')}
       <br />
-      (위젯이 표시되지 않으면 @BotFather에서 /setdomain 을 확인하세요)
+      {t('login.telegramHint2')}
     </p>
   );
 }

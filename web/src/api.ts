@@ -1,4 +1,5 @@
 import type { AuthConfig, FileItem, FolderNode, Permission, Role, User } from './types';
+import { t } from './i18n';
 
 /** Error thrown for any non-2xx API response; message is the backend {error}. */
 export class ApiError extends Error {
@@ -144,7 +145,7 @@ export function uploadFile(
         reject(new ApiError(xhr.status, message));
       }
     };
-    xhr.onerror = () => reject(new ApiError(0, '네트워크 오류로 업로드하지 못했습니다'));
+    xhr.onerror = () => reject(new ApiError(0, t('file.uploadNetworkError')));
     xhr.send(fd);
   });
 }
