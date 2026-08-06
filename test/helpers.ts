@@ -159,7 +159,7 @@ export async function api(
 export function formData(buf: Buffer, filename: string, fields?: Record<string, string>): FormData {
   const fd = new FormData();
   for (const [key, value] of Object.entries(fields ?? {})) fd.append(key, value);
-  fd.append('file', new Blob([buf]), filename);
+  fd.append('file', new Blob([Uint8Array.from(buf)]), filename);
   return fd;
 }
 
