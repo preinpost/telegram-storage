@@ -310,7 +310,7 @@ export default function Browser({ user, onLogout }: Props) {
           <span className="max-w-[10rem] truncate font-semibold" title={`@${user.username}`}>
             {user.displayName || user.username}
           </span>
-          <span className={cn(roleBadge, user.role === 'admin' && roleBadgeAdmin)}>{user.role}</span>
+          <span className={cn(roleBadge, user.role === 'admin' && roleBadgeAdmin)}>{t(`user.role.${user.role}`)}</span>
           {isGlobalAdmin && (
             <button
               type="button"

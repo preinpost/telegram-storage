@@ -48,7 +48,7 @@ export default function UserManagementModal({ open, onClose }: Props) {
     setBusyId(u.id);
     try {
       await api.updateUserRole(u.id, role);
-      toasts.push('success', t('users.roleUpdated', { name: u.displayName || u.username, role: t(`role.${role}`) }));
+      toasts.push('success', t('users.roleUpdated', { name: u.displayName || u.username, role: t(`user.role.${role}`) }));
       await load();
     } catch (err) {
       toasts.push('error', errorMessage(err, t('users.roleUpdateFailed')));
@@ -98,7 +98,7 @@ export default function UserManagementModal({ open, onClose }: Props) {
                         {u.displayName || u.username}
                       </span>
                       <span className={cn(roleBadge, u.role === 'admin' && roleBadgeAdmin)}>
-                        {t(`role.${u.role}`)}
+                        {t(`user.role.${u.role}`)}
                       </span>
                     </div>
                     <div className="flex min-w-0 gap-2 truncate text-xs text-muted">
@@ -119,8 +119,8 @@ export default function UserManagementModal({ open, onClose }: Props) {
                     title={`${t('users.role')}: ${u.displayName || u.username}`}
                     aria-label={`${t('users.role')}: ${u.displayName || u.username}`}
                   >
-                    <option value="member">{t('role.member')}</option>
-                    <option value="admin">{t('role.admin')}</option>
+                    <option value="member">{t('user.role.member')}</option>
+                    <option value="admin">{t('user.role.admin')}</option>
                   </select>
 
                   <button
