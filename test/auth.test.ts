@@ -236,3 +236,23 @@ describe('dev-login and sessions', () => {
     expect(me.status).toBe(401);
   });
 });
+
+describe('GET /api/auth/config (public auth-mode advertisement)', () => {
+  it('is public and reports devAuth + botUsername', async () => {
+    const h = await harness({ devAuth: true, botUsername: 'my_storage_bot' });
+    const res = await fetch(`${h.baseUrl}/api/auth/config`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { devAuth: boolean; botUsername: string | null };
+    expect(body.devAuth).toBe(true);
+    expect(body.botUsername).toBe('my_storage_bot');
+  });
+
+  it('reports devAuth=false and botUsername=null when unconfigured', async () => {
+    const h = await harness({ devAuth: false });
+    const res = await fetch(`${h.baseUrl}/api/auth/config`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { devAuth: boolean; botUsername: string | null };
+    expect(body.devAuth).toBe(false);
+    expect(body.botUsername).toBeNull();
+  });
+});

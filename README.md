@@ -1,8 +1,9 @@
 # telegram-storage
 
-Telegram 기반 무제한 파일 스토리지 — **실제 바이너리는 Telegram 봇에, 메타데이터는 SQLite에** 저장하는 개인 프로젝트(M1~M3).
+Telegram 기반 무제한 파일 스토리지 — **실제 바이너리는 Telegram 봇에, 메타데이터는 SQLite에** 저장하는 개인 프로젝트(M1~M4).
 
 - **백엔드**: Hono + TypeScript (Node 24)
+- **웹 UI (M4)**: Vite + React + TypeScript SPA (`web/`) — 폴더 트리/파일 목록/업로드(진행률)/다운로드/삭제/권한 관리 + 로그인
 - **DB**: SQLite (better-sqlite3, WAL)
 - **Telegram 클라이언트**: grammY (+ throttler, autoRetry) — **토큰이 없으면 mock 클라이언트로 전체 동작 검증 가능**
 - **청크**: 15MB 고정 (Telegram 공개 Bot API: 업로드 50MB / 다운로드 20MB 한도 이내)
@@ -11,9 +12,9 @@ Telegram 기반 무제한 파일 스토리지 — **실제 바이너리는 Teleg
 - **인증 (M3)**: 텔레그램 로그인 위젯 서명 검증 + httpOnly 쿠키 세션 (HMAC 서명)
 - **폴더/권한 (M3)**: 폴더 트리 CRUD + 사용자별 read/write/admin 권한 (조상 상속)
 
-> 이번 범위(M1~M3): 파일 업로드/다운로드/목록/논리삭제, 15MB 분할·조립, checksum, mock 검증,
-> 사용자 인증(텔레그램 위젯 + dev-login), 폴더 CRUD, 권한 부여/회수/상속.
-> M4(웹 UI) 는 범위 외입니다.
+> 이번 범위(M1~M4): 파일 업로드/다운로드/목록/논리삭제, 15MB 분할·조립, checksum, mock 검증,
+> 사용자 인증(텔레그램 위젯 + dev-login), 폴더 CRUD, 권한 부여/회수/상속,
+> 웹 UI (React SPA: 폴더 트리/파일 목록/업로드/다운로드/삭제/권한 관리).
 
 ## 아키텍처
 
@@ -81,6 +82,8 @@ npm run chatid
 
 > 참고: 위젯 콜백(`POST /api/auth/telegram`) 서명 검증은 위젯 자체가 아닌
 > **서버가** 수행하므로, curl/스크립트로도 로그인할 수 있습니다 (아래 curl 예시 참고).
+> Vite dev 서버(포트 5173)에서 위젯을 쓰려면 `localhost:5173`도 /setdomain에 등록해야 합니다.
+> 위젯 없이 개발하려면 `DEV_AUTH=true`로 dev-login 폼을 쓰면 됩니다.
 
 ### 5) 실행
 
@@ -97,6 +100,7 @@ npm start          # 실행
 | 항목 | 값 | 설명 |
 |---|---|---|
 | `TELEGRAM_BOT_TOKEN` | 봇 토큰 | 위젯 콜백 서명 검증 + 파일 저장 |
+| `TELEGRAM_BOT_USERNAME` | 봇 유저네임 (예: `my_storage_bot`) | 웹 UI의 텔레그램 로그인 위젯 버튼용 (`GET /api/auth/config`가 노출) |
 | `SESSION_SECRET` | 임의의 긴 문자열 | 세션 쿠키 HMAC 서명. 비우면 재시작마다 세션 만료 |
 | `DEV_AUTH` | `true`/`false` | `true`면 `POST /api/auth/dev-login`(username → 세션) 허용 — 로컬 개발/테스트 전용, **실전에선 false** |
 | @BotFather `/setdomain` | 도메인 | 위젯 동작 도메인 (로컬은 `localhost:3000`) |
@@ -135,6 +139,7 @@ npm start          # 실행
 
 | 메서드 | 경로 | 설명 |
 |---|---|---|
+| `GET` | `/api/auth/config` | (public) `{devAuth, botUsername}` — 웹 UI가 로그인 방식을 결정 (M4) |
 | `POST` | `/api/auth/telegram` | 로그인 위젯 콜백 (form data: `id, first_name, username, auth_date, hash` 등) → `{user}` + 세션 쿠키 |
 | `POST` | `/api/auth/dev-login` | `DEV_AUTH=true` 전용. `{"username","displayName?"}` → `{user}` + 세션 쿠키 |
 | `GET` | `/api/auth/me` | 현재 사용자 `{user: {id, username, displayName, role, telegramId, createdAt}}` (인증 필요) |
@@ -193,6 +198,33 @@ curl -b cookies.txt -X DELETE "http://localhost:3000/api/folders/1/permissions?u
 > 보안: `tg_file_id`, `tg_message_id`, `tg_chat_id`, 그리고 봇 토큰이 포함된 `file_path` URL은
 > **어떤 API 응답에도 노출되지 않습니다.** 다운로드는 서버가 Telegram에서 직접 조립해 스트리밍합니다.
 
+## 웹 UI (M4)
+
+`web/` 에 Vite + React + TypeScript SPA가 있습니다 (의존성: react/react-dom만, UI 라이브러리 없음).
+Vite dev 서버가 `/api`를 `http://localhost:3000`으로 프록시하므로 브라우저에서 API와 같은 오리진으로 동작하며,
+httpOnly 세션 쿠키(`tg_session`)가 자동으로 전달됩니다.
+
+### 실행 (터미널 2개)
+
+```bash
+# 터미널 1 — API 서버 (포트 3000)
+npm install
+DEV_AUTH=true npm run dev        # dev-login 폼 사용 (위젯 없이 바로 로그인)
+
+# 터미널 2 — 웹 dev 서버 (포트 5173)
+npm --prefix web install
+npm run dev:web                  # == npm --prefix web run dev
+```
+
+브라우저에서 `http://localhost:5173` 접속 → dev-login 폼(username 입력) → 폴더 트리/파일 목록/업로드/권한 관리.
+
+- 로그인 화면은 `GET /api/auth/config` 응답으로 결정됩니다: `devAuth=true`면 dev-login 폼, 아니면 `botUsername`의
+  텔레그램 로그인 위젯, 둘 다 없으면 안내 메시지.
+- 텔레그램 위젯을 쓰려면 봇에 `TELEGRAM_BOT_USERNAME` + @BotFather `/setdomain` 등록이 필요합니다 (로컬 Vite는 `localhost:5173`).
+- 401 응답 시 자동으로 로그인 화면으로 돌아갑니다.
+
+빌드: `npm run build:web` (tsc + vite build → `web/dist`). 프리뷰: `npm run preview:web`.
+
 ## 테스트 / 검증
 
 ```bash
@@ -229,13 +261,18 @@ src/
     permissions.ts    유효 권한 해석 (직접 → 조상 상속 → 기본 read) + admin 가드
     middleware.ts     requireAuth Hono 미들웨어
   routes/
-    auth.ts           /api/auth/* (telegram, dev-login, me, logout)
+    auth.ts           /api/auth/* (config, telegram, dev-login, me, logout)
     folders.ts        /api/folders/* (CRUD + 권한 부여/회수)
     files.ts          /api/files/* (인증 + 폴더 권한 게이트)
   tg/
     types.ts          TgClient 인터페이스
     grammy.ts         grammY 실전 구현 (throttler + autoRetry)
     mock.ts           로컬 파일 mock (토큰 불필요, 실패 주입 지원)
+web/                  M4 웹 UI (Vite + React + TS)
+  src/
+    App.tsx           부트스트랩(config/me 로드, 401 → 로그인 전환)
+    api.ts            fetch 래퍼(credentials: 'include') + XHR 업로드(진행률)
+    components/       LoginPage, Browser, FolderTree, FileList, PermissionsPanel, Toasts
 scripts/
   smoke.ts            왕복 무결성 스모크 (mock/실전)
   chatid.ts           chat id 확인 헬퍼
@@ -250,8 +287,10 @@ test/                 vitest 테스트
 - 세션 쿠키는 Secure 플래그가 없습니다 (로컬 HTTP 개발용). HTTPS 배포 시 리버스 프록시 + 필요시 Secure 옵션 추가 필요.
 - 로그아웃은 쿠키 삭제 방식(stateless)이라, 탈취된 토큰은 만료까지 재사용될 수 있습니다 — 실전 배포 시 서버 측 세션 블록리스트 도입을 권장.
 - `GET /api/folders`는 read 이상만 노출하지만, member 기본값이 read이므로 실질적으로 모든 폴더가 보입니다 (승인된 설계).
+- 웹 UI의 권한 부여 폼은 API 계약상 사용자 **id**(숫자)를 입력받습니다 (사용자 목록 엔드포인트가 없음).
+  알려진 사용자 id(폴더 소유자/기존 부여분)는 패널 하단에 칩으로 표시됩니다. 사용자 이름으로 검색하려면 향후 `GET /api/users` 추가 필요.
+- 로컬 dev에서 세션 쿠키는 Secure 플래그가 없습니다(HTTP). HTTPS 배포 시 리버스 프록시 + Secure 쿠키 설정 필요.
 
 ## 다음 마일스톤 (범위 외)
 
-- M4: 웹 UI (React) — 이 README의 API 스펙 기준으로 제작
 - M5: 캐시 계층, 동시성 점검

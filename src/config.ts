@@ -12,6 +12,8 @@ export const CHUNK_SIZE = 15 * 1024 * 1024;
 export interface Config {
   /** Telegram bot token (from @BotFather). null → mock Telegram client. */
   botToken: string | null;
+  /** Telegram bot username (from @BotFather), used by the Login Widget. null → widget hidden. */
+  botUsername: string | null;
   /** Dedicated private channel/group chat id for storage. null → mock placeholder. */
   chatId: string | null;
   dbPath: string;
@@ -51,6 +53,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   }
   return {
     botToken: env.TELEGRAM_BOT_TOKEN?.trim() || null,
+    botUsername: env.TELEGRAM_BOT_USERNAME?.trim() || null,
     chatId: env.STORAGE_CHAT_ID?.trim() || null,
     dbPath: resolve(env.DB_PATH || './data/telegram-storage.db'),
     tmpDir: resolve(env.TMP_DIR || './tmp'),

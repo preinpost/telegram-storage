@@ -18,6 +18,8 @@ export interface AppDeps {
   chatId: string | null;
   /** Telegram bot token (used for Login Widget signature verification). */
   botToken: string | null;
+  /** Telegram bot username (shown by the Login Widget). null → widget hidden. */
+  botUsername: string | null;
   /** DEV_AUTH=true enables POST /api/auth/dev-login. */
   devAuth: boolean;
   /** Session signing secret; null → ephemeral random secret. */

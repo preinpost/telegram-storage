@@ -39,6 +39,7 @@ const app = createApp({
   tmpDir: config.tmpDir,
   chatId,
   botToken: config.botToken,
+  botUsername: config.botUsername,
   devAuth: config.devAuth,
   sessionSecret: config.sessionSecret,
 });

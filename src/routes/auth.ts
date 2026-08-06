@@ -17,6 +17,15 @@ import { HttpError } from '../errors.ts';
 export function authRoutes(deps: AppDeps, sessionSecret: string): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
 
+  /**
+   * GET /api/auth/config — public auth-mode advertisement for the web UI:
+   * whether dev-login is enabled and which bot username the Login Widget
+   * should render (null → no widget). No secrets are exposed.
+   */
+  app.get('/config', (c) => {
+    return c.json({ devAuth: deps.devAuth, botUsername: deps.botUsername ?? null });
+  });
+
   app.post('/telegram', async (c) => {
     if (!deps.botToken) {
       throw new HttpError(503, 'telegram auth requires a bot token (TELEGRAM_BOT_TOKEN)');

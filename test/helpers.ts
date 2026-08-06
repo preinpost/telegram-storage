@@ -48,6 +48,8 @@ export interface StartHarnessOptions {
   autoLogin?: boolean;
   /** Bot token used for Telegram widget auth. Default: null (mock mode). */
   botToken?: string | null;
+  /** Bot username advertised by GET /api/auth/config. Default: null. */
+  botUsername?: string | null;
   /** Session signing secret. Default: a fixed test secret. */
   sessionSecret?: string;
 }
@@ -80,6 +82,7 @@ export async function startHarness(options: StartHarnessOptions = {}): Promise<T
     tmpDir: join(tmp, 'tmp'),
     chatId: options.chatId ?? '-100telegram-storage-mock',
     botToken: options.botToken ?? null,
+    botUsername: options.botUsername ?? null,
     devAuth,
     sessionSecret: options.sessionSecret ?? 'test-session-secret',
   };
