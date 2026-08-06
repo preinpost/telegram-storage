@@ -50,3 +50,31 @@ parts(
 - M3: users/folders/permissions + 인증 (텔레그램 로그인 위젯 vs 초대 코드+JWT — 미확정)
 - M4: 웹 UI (React)
 - M5: 캐시 계층, 동시성 점검
+
+---
+
+## M3 확정 (2025-08, 구현 완료)
+
+| 항목 | 결정 |
+|---|---|
+| 인증 | **텔레그램 로그인 위젯** — `secret_key = SHA256(봇 토큰)`, `data_check_string` 정렬 후 `\n` 연결, `HMAC-SHA256` hex 비교 + `auth_date` 24h 이내. 검증은 순수 함수 `verifyTelegramAuth`로 분리 (known test vector) |
+| 세션 | httpOnly + SameSite=Lax 쿠키 `tg_session`, HMAC 서명 페이로드 `{uid, exp}` (7일). `SESSION_SECRET` env, 미설정 시 임시 키(재시작 시 세션 소멸) |
+| 개발 우회 | `DEV_AUTH=true` 시 `POST /api/auth/dev-login` (username → 세션). 실전 모드에선 위젯 검증만 통과 |
+| users | id, telegram_id(unique, nullable), username, display_name, role('admin'\|'member'), created_at. **첫 로그인 사용자가 admin** (bootstrap) |
+| folders | id, name, parent_id(자기참조 FK, CASCADE), owner_id(FK users), created_at. 순환/중복 이름/부모 존재 검증 |
+| permissions | id, scope('user'\|'group' — group은 스키마 정의만), scope_id, folder_id, role('read'\|'write'\|'admin'), UNIQUE(scope, scope_id, folder_id) |
+| 권한 해석 | 직접 행 → 조상 체인에서 가장 가까운 행 상속 → 기본 `read` (member 전체 읽기 허용). 소유자/전역 admin = 항상 admin. 루트(folder_id NULL) = member 기본 `write` |
+| 파일 | files.folder_id/owner_id 기록. 다운로드 ≥ read, 업로드/삭제 ≥ write (소속 폴더 기준) |
+
+### M3 API (간략)
+
+- `POST /api/auth/telegram` (위젯 form data) · `POST /api/auth/dev-login` · `GET /api/auth/me` · `POST /api/auth/logout`
+- `GET|POST /api/folders` · `PATCH|DELETE /api/folders/:id` · `GET|POST /api/folders/:id/permissions` · `DELETE /api/folders/:id/permissions?userId=`
+- 기존 파일 라우트에 인증 + 권한 + `folder_id`(multipart 필드 / query) 적용
+
+상세 스펙/응답 형태는 README의 API 섹션 참고 (M4 UI 구현 기준).
+
+## 다음 마일스톤 (이번 범위 아님)
+
+- M4: 웹 UI (React) — README의 API 스펙 기준으로 제작
+- M5: 캐시 계층, 동시성 점검

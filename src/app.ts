@@ -1,10 +1,13 @@
 import { Hono } from 'hono';
 import { logger } from 'hono/logger';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
-import type { Db } from './db.ts';
+import { randomSecret } from './auth/session.ts';
+import type { Db, UserRow } from './db.ts';
 import { HttpError } from './errors.ts';
 import type { RateLimitQueue } from './queue.ts';
+import { authRoutes } from './routes/auth.ts';
 import { filesRoutes } from './routes/files.ts';
+import { foldersRoutes } from './routes/folders.ts';
 import type { TgClient } from './tg/types.ts';
 
 export interface AppDeps {
@@ -13,14 +16,30 @@ export interface AppDeps {
   queue: RateLimitQueue;
   tmpDir: string;
   chatId: string | null;
+  /** Telegram bot token (used for Login Widget signature verification). */
+  botToken: string | null;
+  /** DEV_AUTH=true enables POST /api/auth/dev-login. */
+  devAuth: boolean;
+  /** Session signing secret; null → ephemeral random secret. */
+  sessionSecret: string | null;
 }
+
+/** Context variables shared by all routes (set by the requireAuth middleware). */
+export type AppEnv = {
+  Variables: {
+    user: UserRow;
+  };
+};
 
 /**
  * Hono app factory. Dependencies are injected so tests can run the full HTTP
  * stack against a mock Telegram client and an in-memory/temp SQLite DB.
  */
-export function createApp(deps: AppDeps): Hono {
-  const app = new Hono();
+export function createApp(deps: AppDeps): Hono<AppEnv> {
+  const app = new Hono<AppEnv>();
+  // Resolve the session secret once per app so every route signs/verifies
+  // cookies with the same key (null → ephemeral secret, sessions die on restart).
+  const sessionSecret = deps.sessionSecret ?? randomSecret();
 
   app.use('*', logger());
   app.notFound((c) => c.json({ error: 'not found' }, 404));
@@ -34,7 +53,9 @@ export function createApp(deps: AppDeps): Hono {
   });
 
   app.get('/health', (c) => c.json({ ok: true }));
-  app.route('/api/files', filesRoutes(deps));
+  app.route('/api/auth', authRoutes(deps, sessionSecret));
+  app.route('/api/folders', foldersRoutes(deps, sessionSecret));
+  app.route('/api/files', filesRoutes(deps, sessionSecret));
 
   return app;
 }

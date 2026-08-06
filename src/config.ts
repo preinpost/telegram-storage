@@ -22,6 +22,14 @@ export interface Config {
   queueMaxBackoffMs: number;
   port: number;
   host: string;
+  /**
+   * DEV_AUTH=true enables POST /api/auth/dev-login (username → session) for
+   * local development / testing without a real Telegram login. Must stay off
+   * in production.
+   */
+  devAuth: boolean;
+  /** Secret signing session cookies. null → ephemeral secret (sessions die on restart). */
+  sessionSecret: string | null;
 }
 
 function int(value: string | undefined, fallback: number, label: string): number {
@@ -52,5 +60,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     queueMaxBackoffMs: int(env.QUEUE_MAX_BACKOFF_MS, 60000, 'QUEUE_MAX_BACKOFF_MS'),
     port: int(env.PORT, 3000, 'PORT'),
     host: env.HOST || '0.0.0.0',
+    devAuth: env.DEV_AUTH === 'true' || env.DEV_AUTH === '1',
+    sessionSecret: env.SESSION_SECRET?.trim() || null,
   };
 }

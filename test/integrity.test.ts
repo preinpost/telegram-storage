@@ -20,11 +20,11 @@ describe('integrity: checksum verification and part ordering', () => {
   it('returns a clean 500 when the first part checksum is corrupted', async () => {
     const h = await harness();
     const original = randomBuffer(SIZE);
-    const { id } = await uploadBytes(h.baseUrl, original, 'corrupt-first.bin');
+    const { id } = await uploadBytes(h.baseUrl, original, 'corrupt-first.bin', h.cookie);
 
     h.db.corruptChecksum(Number(id), 0);
 
-    const res = await fetch(`${h.baseUrl}/api/files/${id}/download`);
+    const res = await fetch(`${h.baseUrl}/api/files/${id}/download`, { headers: { cookie: h.cookie } });
     expect(res.status).toBe(500);
     const body = (await res.json()) as { error: string };
     expect(body.error).toContain('checksum');
@@ -33,11 +33,11 @@ describe('integrity: checksum verification and part ordering', () => {
   it('aborts the stream when a later part checksum is corrupted', async () => {
     const h = await harness();
     const original = randomBuffer(SIZE);
-    const { id } = await uploadBytes(h.baseUrl, original, 'corrupt-late.bin');
+    const { id } = await uploadBytes(h.baseUrl, original, 'corrupt-late.bin', h.cookie);
 
     h.db.corruptChecksum(Number(id), 2); // last part
 
-    const res = await fetch(`${h.baseUrl}/api/files/${id}/download`);
+    const res = await fetch(`${h.baseUrl}/api/files/${id}/download`, { headers: { cookie: h.cookie } });
     expect(res.status).toBe(200);
     let bytes = 0;
     let errored = false;
@@ -59,14 +59,14 @@ describe('integrity: checksum verification and part ordering', () => {
   it('emits parts strictly in part_index order (reassembly follows the index)', async () => {
     const h = await harness();
     const original = randomBuffer(SIZE);
-    const { id } = await uploadBytes(h.baseUrl, original, 'ordered.bin');
+    const { id } = await uploadBytes(h.baseUrl, original, 'ordered.bin', h.cookie);
 
     // Swap part_index 0 <-> 1 in the DB. The download must order rows by
     // part_index, so the output becomes part1+part0+part2 (byte-exact).
     const PART = 15 * 1024 * 1024;
     h.db.swapPartIndices(Number(id), 0, 1);
 
-    const dl = await download(h.baseUrl, id);
+    const dl = await download(h.baseUrl, id, h.cookie);
     expect(dl.status).toBe(200);
     const expected = Buffer.concat([
       original.subarray(PART, 2 * PART),
@@ -79,13 +79,13 @@ describe('integrity: checksum verification and part ordering', () => {
   it('rejects a download with 500 when part 0 is missing from storage', async () => {
     const h = await harness();
     const original = randomBuffer(SIZE);
-    const { id } = await uploadBytes(h.baseUrl, original, 'missing.bin');
+    const { id } = await uploadBytes(h.baseUrl, original, 'missing.bin', h.cookie);
 
     // Remove the stored blob for part 0 from the mock Telegram store.
     const parts = h.db.getPartsForFile(Number(id));
     await h.tg.deleteBlob(parts[0]!.tg_file_id);
 
-    const res = await fetch(`${h.baseUrl}/api/files/${id}/download`);
+    const res = await fetch(`${h.baseUrl}/api/files/${id}/download`, { headers: { cookie: h.cookie } });
     expect(res.status).toBe(500);
   });
 });

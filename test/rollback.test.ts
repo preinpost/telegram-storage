@@ -27,6 +27,7 @@ describe('upload failure rollback', () => {
 
     const res = await fetch(`${h.baseUrl}/api/files`, {
       method: 'POST',
+      headers: { cookie: h.cookie },
       body: formData(original, 'rollback.bin'),
     });
     expect(res.status).toBe(500);
@@ -48,6 +49,7 @@ describe('upload failure rollback', () => {
     });
     const res = await fetch(`${h.baseUrl}/api/files`, {
       method: 'POST',
+      headers: { cookie: h.cookie },
       body: formData(randomBuffer(SIZE), 'fail-first.bin'),
     });
     expect(res.status).toBe(500);

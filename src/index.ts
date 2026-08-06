@@ -21,7 +21,27 @@ const queue = new RateLimitQueue({
 });
 const chatId = config.chatId ?? (real ? null : '-100telegram-storage-mock');
 
-const app = createApp({ db, tg, queue, tmpDir: config.tmpDir, chatId });
+if (!config.sessionSecret) {
+  console.warn(
+    'WARNING: SESSION_SECRET is not set — using an ephemeral session secret; all sessions are invalidated on restart. Set SESSION_SECRET in .env for persistent sessions.',
+  );
+}
+if (config.devAuth) {
+  console.warn(
+    'WARNING: DEV_AUTH=true — POST /api/auth/dev-login (username → session) is enabled. Disable it in production.',
+  );
+}
+
+const app = createApp({
+  db,
+  tg,
+  queue,
+  tmpDir: config.tmpDir,
+  chatId,
+  botToken: config.botToken,
+  devAuth: config.devAuth,
+  sessionSecret: config.sessionSecret,
+});
 
 serve({ fetch: app.fetch, port: config.port, hostname: config.host }, (info) => {
   console.log(

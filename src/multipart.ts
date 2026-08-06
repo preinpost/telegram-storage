@@ -15,6 +15,11 @@ export interface MultipartResult {
   part: Promise<MultipartFilePart>;
   /** Resolves once the entire multipart body has been consumed. */
   done: Promise<void>;
+  /**
+   * Non-file form fields seen so far (e.g. `folder_id`). Mutated as the body
+   * streams; only read AFTER `done` has resolved to be complete.
+   */
+  fields: Record<string, string>;
 }
 
 /**
@@ -52,7 +57,11 @@ export function parseFilePart(request: Request): MultipartResult {
   });
 
   let partSettled = false;
+  const fields: Record<string, string> = {};
 
+  bb.on('field', (name, value) => {
+    fields[name] = value;
+  });
   bb.on('file', (field, stream, filename, _transferEncoding, mimeType) => {
     if (partSettled) {
       stream.resume(); // discard any additional file fields
@@ -80,5 +89,5 @@ export function parseFilePart(request: Request): MultipartResult {
 
   nodeBody.pipe(bb);
 
-  return { part: partPromise, done: donePromise };
+  return { part: partPromise, done: donePromise, fields };
 }

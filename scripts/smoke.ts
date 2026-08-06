@@ -62,12 +62,34 @@ async function main(): Promise<void> {
     queue,
     tmpDir: join(config.tmpDir, 'smoke-tmp'),
     chatId: config.chatId ?? '-100telegram-storage-mock',
+    botToken: config.botToken,
+    devAuth: config.devAuth,
+    sessionSecret: config.sessionSecret,
   });
 
   const server = serve({ fetch: app.fetch, port: 0 });
   await new Promise<void>((resolve) => server.once('listening', resolve));
   const { port } = server.address() as AddressInfo;
   const baseUrl = `http://127.0.0.1:${port}`;
+
+  // The API now requires a session. The smoke script uses the dev-login
+  // bypass (DEV_AUTH=true) so it still runs token-free.
+  if (!config.devAuth) {
+    throw new Error(
+      'smoke requires DEV_AUTH=true (add DEV_AUTH=true to .env) — the API is now authenticated',
+    );
+  }
+  const loginRes = await fetch(`${baseUrl}/api/auth/dev-login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ username: 'smoke' }),
+  });
+  if (!loginRes.ok) throw new Error(`dev-login failed: HTTP ${loginRes.status}`);
+  const loginCookie = loginRes.headers.get('set-cookie');
+  if (!loginCookie) throw new Error('dev-login did not return a session cookie');
+  const cookie = loginCookie.split(';')[0]!;
+  const authHeaders = { cookie };
+
   const inputPath = join(config.tmpDir, `smoke-input-${process.pid}.bin`);
 
   console.log(
@@ -100,7 +122,7 @@ async function main(): Promise<void> {
     console.log(`[smoke] uploading via POST /api/files ...`);
     const fd = new FormData();
     fd.append('file', new Blob([original]), 'smoke.bin');
-    const upRes = await fetch(`${baseUrl}/api/files`, { method: 'POST', body: fd });
+    const upRes = await fetch(`${baseUrl}/api/files`, { method: 'POST', headers: authHeaders, body: fd });
     if (!upRes.ok) {
       throw new Error(`upload failed: HTTP ${upRes.status} ${await upRes.text()}`);
     }
@@ -113,7 +135,7 @@ async function main(): Promise<void> {
     }
 
     // 3. list
-    const listRes = await fetch(`${baseUrl}/api/files`);
+    const listRes = await fetch(`${baseUrl}/api/files`, { headers: authHeaders });
     const list = (await listRes.json()) as { files: Array<{ id: string }> };
     if (!list.files.some((f) => f.id === uploaded.id)) {
       throw new Error('uploaded file missing from GET /api/files');
@@ -121,7 +143,7 @@ async function main(): Promise<void> {
 
     // 4. download and verify sha256 + length
     console.log(`[smoke] downloading via GET /api/files/${uploaded.id}/download ...`);
-    const dlRes = await fetch(`${baseUrl}/api/files/${uploaded.id}/download`);
+    const dlRes = await fetch(`${baseUrl}/api/files/${uploaded.id}/download`, { headers: authHeaders });
     if (!dlRes.ok) {
       throw new Error(`download failed: HTTP ${dlRes.status}`);
     }
@@ -136,11 +158,11 @@ async function main(): Promise<void> {
     console.log(`[smoke] download sha256=${downloadedSha} — MATCH`);
 
     // 5. delete (logical) and confirm it disappears from the list
-    const delRes = await fetch(`${baseUrl}/api/files/${uploaded.id}`, { method: 'DELETE' });
+    const delRes = await fetch(`${baseUrl}/api/files/${uploaded.id}`, { method: 'DELETE', headers: authHeaders });
     if (delRes.status !== 204) {
       throw new Error(`delete failed: HTTP ${delRes.status}`);
     }
-    const list2 = (await (await fetch(`${baseUrl}/api/files`)).json()) as { files: unknown[] };
+    const list2 = (await (await fetch(`${baseUrl}/api/files`, { headers: authHeaders })).json()) as { files: unknown[] };
     if (list2.files.length !== 0) {
       throw new Error('file still listed after DELETE');
     }
