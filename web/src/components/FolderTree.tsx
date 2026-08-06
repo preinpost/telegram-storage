@@ -1,5 +1,7 @@
 import { useState, type KeyboardEvent } from 'react';
+import { cn } from '../cn';
 import { useT } from '../i18n';
+import { btn, btnPrimary, btnSmall, iconBtn, iconBtnDanger, input, roleBadge } from '../ui';
 import { ROLE_RANK, type FolderNode } from '../types';
 
 interface Props {
@@ -86,13 +88,13 @@ export default function FolderTree({
     createParent === undefined ? '' : createParent === null ? t('common.root') : nodeName(nodes, createParent) ?? '?';
 
   return (
-    <div className="tree-panel">
-      <div className="tree-header">
-        <span className="tree-title">{t('folder.title')}</span>
+    <div className="min-w-[240px] p-2.5">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="font-bold">{t('folder.title')}</span>
         {canCreate && (
           <button
             type="button"
-            className="btn btn-small"
+            className={`${btn} ${btnSmall}`}
             onClick={() => openCreate(selectedId)}
             title={t('folder.newTitle')}
           >
@@ -102,9 +104,10 @@ export default function FolderTree({
       </div>
 
       {createParent !== undefined && (
-        <div className="tree-create">
-          <div className="tree-create-target">{t('folder.createAt', { name: targetName })}</div>
+        <div className="mb-2 flex flex-col gap-1.5 rounded-lg border border-dashed border-border bg-row-alt p-2">
+          <div className="text-xs text-muted">{t('folder.createAt', { name: targetName })}</div>
           <input
+            className={input}
             value={createName}
             onChange={(e) => setCreateName(e.target.value)}
             onKeyDown={(e) => onKeyDown(e, submitCreate)}
@@ -112,28 +115,28 @@ export default function FolderTree({
             autoFocus
             maxLength={255}
           />
-          <div className="row-actions">
-            <button type="button" className="btn btn-small btn-primary" onClick={submitCreate} disabled={busy || !createName.trim()}>
+          <div className="flex gap-1.5">
+            <button type="button" className={`${btn} ${btnSmall} ${btnPrimary}`} onClick={submitCreate} disabled={busy || !createName.trim()}>
               {t('common.create')}
             </button>
-            <button type="button" className="btn btn-small" onClick={() => setCreateParent(undefined)}>
+            <button type="button" className={`${btn} ${btnSmall}`} onClick={() => setCreateParent(undefined)}>
               {t('common.cancel')}
             </button>
           </div>
         </div>
       )}
 
-      <div className="tree-list">
+      <div className="flex flex-col">
         <div
-          className={`tree-row ${selectedId === null ? 'selected' : ''}`}
+          className={cn('flex cursor-default items-center gap-[5px] rounded-md px-2 py-1 hover:bg-row-hover', selectedId === null && 'bg-info-bg')}
           style={{ paddingLeft: 8 }}
         >
-          <span className="tree-name" onClick={() => onSelect(null)}>
+          <span className="flex-1 cursor-pointer truncate" onClick={() => onSelect(null)}>
             🗂 {t('common.root')}
           </span>
-          <span className="role-badge">{t('role.write')}</span>
+          <span className={roleBadge}>{t('role.write')}</span>
         </div>
-        {nodes.length === 0 && <div className="tree-empty">{t('folder.empty')}</div>}
+        {nodes.length === 0 && <div className="p-2 text-xs text-muted">{t('folder.empty')}</div>}
         {nodes.map((node) => renderNode(node, 0))}
       </div>
     </div>
@@ -148,7 +151,7 @@ export default function FolderTree({
     return (
       <div key={node.id}>
         <div
-          className={`tree-row ${selectedId === node.id ? 'selected' : ''}`}
+          className={cn('flex cursor-default items-center gap-[5px] rounded-md px-2 py-1 hover:bg-row-hover', selectedId === node.id && 'bg-info-bg')}
           style={{ paddingLeft: 8 + (depth + 1) * 16 }}
         >
           {editing ? (
@@ -159,35 +162,35 @@ export default function FolderTree({
                 onKeyDown={(e) => onKeyDown(e, () => submitRename(node.id))}
                 autoFocus
                 maxLength={255}
-                className="tree-rename-input"
+                className="min-w-0 flex-1 rounded-md border border-border bg-white px-1.5 py-[3px] focus:border-accent focus:outline-2 focus:outline-focus-ring"
               />
-              <button type="button" className="btn btn-small btn-primary" onClick={() => submitRename(node.id)} disabled={busy}>
+              <button type="button" className={`${btn} ${btnSmall} ${btnPrimary}`} onClick={() => submitRename(node.id)} disabled={busy}>
                 {t('common.save')}
               </button>
-              <button type="button" className="btn btn-small" onClick={() => setEditingId(null)}>
+              <button type="button" className={`${btn} ${btnSmall}`} onClick={() => setEditingId(null)}>
                 {t('common.cancel')}
               </button>
             </>
           ) : (
             <>
-              <span className="tree-name" onClick={() => onSelect(node.id)} title={node.name}>
+              <span className="flex-1 cursor-pointer truncate" onClick={() => onSelect(node.id)} title={node.name}>
                 📁 {node.name}
               </span>
-              <span className="role-badge" title={t('folder.roleTitle', { role: t(`role.${node.role}`) })}>
+              <span className={roleBadge} title={t('folder.roleTitle', { role: t(`role.${node.role}`) })}>
                 {node.role}
               </span>
               {canWrite && (
-                <button type="button" className="icon-btn" title={t('folder.createChildTitle')} onClick={() => openCreate(node.id)}>
+                <button type="button" className={iconBtn} title={t('folder.createChildTitle')} onClick={() => openCreate(node.id)}>
                   ＋
                 </button>
               )}
               {canWrite && (
-                <button type="button" className="icon-btn" title={t('folder.renameTitle')} onClick={() => startRename(node)}>
+                <button type="button" className={iconBtn} title={t('folder.renameTitle')} onClick={() => startRename(node)}>
                   ✏️
                 </button>
               )}
               {isAdmin && (
-                <button type="button" className="icon-btn danger" title={t('common.delete')} onClick={() => confirmDelete(node)}>
+                <button type="button" className={cn(iconBtn, iconBtnDanger)} title={t('common.delete')} onClick={() => confirmDelete(node)}>
                   🗑
                 </button>
               )}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError, setUnauthorizedHandler } from './api';
 import { I18nProvider, useT } from './i18n';
+import { btn, btnPrimary } from './ui';
 import type { AuthConfig, User } from './types';
 import Browser from './components/Browser';
 import LoginPage from './components/LoginPage';
@@ -78,11 +79,13 @@ function Root() {
 
   if (bootFailed) {
     return (
-      <div className="login-page">
-        <div className="login-card">
-          <h1>📁 Telegram Storage</h1>
-          <p className="login-error">{t('app.bootFailed')}</p>
-          <button type="button" className="btn btn-primary" onClick={() => window.location.reload()}>
+      <div className="flex h-full items-center justify-center p-4">
+        <div className="w-full max-w-[380px] rounded-xl border border-border bg-panel p-8 text-center shadow-card">
+          <h1 className="mb-1 text-[22px] font-bold">📁 Telegram Storage</h1>
+          <p className="break-all rounded-lg border border-danger-line bg-danger-bg p-2.5 text-[13px] text-danger-strong">
+            {t('app.bootFailed')}
+          </p>
+          <button type="button" className={`${btn} ${btnPrimary} mt-3`} onClick={() => window.location.reload()}>
             {t('common.retry')}
           </button>
         </div>
@@ -92,9 +95,9 @@ function Root() {
 
   if (user === undefined) {
     return (
-      <div className="login-page">
-        <div className="login-card">
-          <p className="login-hint">{t('common.loading')}</p>
+      <div className="flex h-full items-center justify-center p-4">
+        <div className="w-full max-w-[380px] rounded-xl border border-border bg-panel p-8 text-center shadow-card">
+          <p className="mt-3 text-xs text-muted">{t('common.loading')}</p>
         </div>
       </div>
     );

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
 import { isAbortError } from '../api';
+import { cn } from '../cn';
 import { formatBytes, formatDate } from '../format';
 import { langToLocale, useI18n } from '../i18n';
+import { btn, btnDanger, btnPrimary, btnSmall, roleBadge, roleBadgeAdmin } from '../ui';
 import type { FileItem, FolderNode } from '../types';
 import MoveModal from './MoveModal';
 
@@ -170,14 +172,14 @@ export default function FileList({
 
   return (
     <div
-      className="file-panel"
+      className="relative"
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <div className="file-toolbar">
-        <span className="file-count">
+      <div className="mb-2.5 flex items-center justify-between">
+        <span className="text-xs text-muted">
           {searchMode
             ? searching
               ? t('common.loading')
@@ -192,12 +194,12 @@ export default function FileList({
               ref={inputRef}
               type="file"
               multiple
-              className="hidden-input"
+              className="hidden"
               onChange={pickFiles}
             />
             <button
               type="button"
-              className="btn btn-primary"
+              className={`${btn} ${btnPrimary}`}
               onClick={() => inputRef.current?.click()}
             >
               {t('file.upload')}
@@ -207,17 +209,17 @@ export default function FileList({
       </div>
 
       {uploads.length > 0 && (
-        <div className="upload-list">
+        <div className="mb-2.5 flex flex-col gap-1.5">
           {uploads.map((u) => (
-            <div key={u.key} className={`upload-item ${u.state === 'failed' ? 'failed' : ''}`}>
-              <span className="upload-name">{u.name}</span>
-              <div className="progress">
+            <div key={u.key} className={cn('flex items-center gap-2 text-xs', u.state === 'failed' && 'text-danger')}>
+              <span className="w-40 truncate">{u.name}</span>
+              <div className="h-2 flex-1 overflow-hidden rounded-full bg-track">
                 <div
-                  className={`progress-bar ${u.state === 'failed' ? 'progress-fail' : ''}`}
+                  className={cn('h-full bg-accent transition-[width] duration-150 ease-out', u.state === 'failed' && 'bg-danger')}
                   style={{ width: `${u.state === 'failed' ? 100 : u.percent}%` }}
                 />
               </div>
-              <span className="upload-pct">
+              <span className={cn('w-11 text-right', u.state !== 'failed' && 'text-muted')}>
                 {u.state === 'failed'
                   ? t('file.uploadFailedShort')
                   : u.state === 'queued'
@@ -227,7 +229,7 @@ export default function FileList({
               {u.state !== 'failed' && (
                 <button
                   type="button"
-                  className="upload-cancel"
+                  className="cursor-pointer border-0 bg-transparent p-0 text-xs leading-none text-muted hover:text-danger"
                   title={t('upload.cancelTitle')}
                   onClick={() => cancelUpload(u.key)}
                 >
@@ -240,48 +242,48 @@ export default function FileList({
       )}
 
       {!searchMode && subFolders.length > 0 && (
-        <div className="folder-section">
+        <div className="mb-2.5 flex flex-col overflow-hidden rounded-lg border border-border">
           {subFolders.map((f) => (
             <button
               key={f.id}
               type="button"
-              className="folder-row"
+              className="flex w-full cursor-pointer items-center gap-2 border-0 border-b border-[#eef2f5] bg-row-alt px-2.5 py-[7px] text-left text-sm last:border-b-0 hover:bg-row-hover"
               onClick={() => onOpenFolder(f.id)}
             >
               <span aria-hidden>📁</span>
-              <span className="folder-name" title={f.name}>
+              <span className="flex-1 truncate font-semibold" title={f.name}>
                 {f.name}
               </span>
-              <span className={`role-badge ${f.role === 'admin' ? 'admin' : ''}`}>{f.role}</span>
+              <span className={cn(roleBadge, f.role === 'admin' && roleBadgeAdmin)}>{f.role}</span>
             </button>
           ))}
         </div>
       )}
 
       {rows !== null && rows.length === 0 && (searchMode || subFolders.length === 0) && (
-        <div className="empty-state">
+        <div className="py-10 text-center text-muted">
           {searchMode ? t('search.noResults') : canWrite ? t('file.emptyWrite') : t('file.emptyRead')}
         </div>
       )}
 
       {rows !== null && rows.length > 0 && (
-        <table className="file-table">
+        <table className="w-full table-fixed border-collapse">
           <thead>
             <tr>
-              <th>{t('file.nameCol')}</th>
-              <th className="col-size">{t('file.sizeCol')}</th>
-              <th className="col-date">{t('file.dateCol')}</th>
-              <th className="col-actions">{t('file.actionsCol')}</th>
+              <th className="border-b border-border px-2 py-1.5 text-left text-xs font-semibold text-muted">{t('file.nameCol')}</th>
+              <th className="w-[90px] border-b border-border px-2 py-1.5 text-left text-xs font-semibold text-muted">{t('file.sizeCol')}</th>
+              <th className="w-[160px] border-b border-border px-2 py-1.5 text-left text-xs font-semibold text-muted">{t('file.dateCol')}</th>
+              <th className="w-[170px] whitespace-nowrap border-b border-border px-2 py-1.5 text-right text-xs font-semibold text-muted">{t('file.actionsCol')}</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((f) => (
-              <tr key={f.id}>
-                <td className="file-name" title={f.mime}>
+              <tr key={f.id} className="hover:bg-[#f8fafc]">
+                <td className="truncate border-b border-[#eef2f5] px-2 py-[7px] align-middle" title={f.mime}>
                   {searchMode ? (
                     <button
                       type="button"
-                      className="file-link"
+                      className="cursor-pointer border-0 bg-transparent p-0 text-left text-inherit hover:underline"
                       onClick={() => onOpenSearchFolder(f.folderId)}
                     >
                       📄 {f.name}
@@ -290,13 +292,13 @@ export default function FileList({
                     <span>📄 {f.name}</span>
                   )}
                   {searchMode && f.folderPath && f.folderPath.length > 0 && (
-                    <span className="folder-path">
+                    <span className="mt-0.5 flex flex-wrap items-center gap-0.5 text-[11px] text-muted">
                       {f.folderPath.map((seg, i) => (
                         <span key={seg.id}>
-                          {i > 0 && <span className="crumb-sep">/</span>}
+                          {i > 0 && <span className="text-muted">/</span>}
                           <button
                             type="button"
-                            className="folder-path-link"
+                            className="cursor-pointer border-0 bg-transparent p-0 text-[11px] text-accent hover:underline"
                             onClick={() => onOpenSearchFolder(seg.id)}
                           >
                             {seg.name}
@@ -306,11 +308,11 @@ export default function FileList({
                     </span>
                   )}
                 </td>
-                <td className="col-size">{formatBytes(f.size)}</td>
-                <td className="col-date">{formatDate(f.updatedAt, langToLocale(lang))}</td>
-                <td className="col-actions">
+                <td className="border-b border-[#eef2f5] px-2 py-[7px] align-middle">{formatBytes(f.size)}</td>
+                <td className="border-b border-[#eef2f5] px-2 py-[7px] align-middle">{formatDate(f.updatedAt, langToLocale(lang))}</td>
+                <td className="whitespace-nowrap border-b border-[#eef2f5] px-2 py-[7px] text-right align-middle">
                   <a
-                    className="btn btn-small"
+                    className={`${btn} ${btnSmall}`}
                     href={`/api/files/${f.id}/download`}
                     title={t('file.downloadTitle')}
                   >
@@ -320,14 +322,14 @@ export default function FileList({
                     <>
                       <button
                         type="button"
-                        className="btn btn-small"
+                        className={`${btn} ${btnSmall} ml-1`}
                         onClick={() => setMoveTarget(f)}
                       >
                         {t('file.move')}
                       </button>
                       <button
                         type="button"
-                        className="btn btn-small danger"
+                        className={`${btn} ${btnSmall} ${btnDanger} ml-1`}
                         onClick={() => confirmDelete(f)}
                       >
                         🗑 {t('common.delete')}
@@ -342,7 +344,7 @@ export default function FileList({
       )}
 
       {dragOver && (
-        <div className="drop-overlay">
+        <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center rounded-lg border-2 border-dashed border-accent bg-[rgba(37,99,235,0.08)] font-semibold text-accent-dark">
           <span>{t('upload.dropHint')}</span>
         </div>
       )}

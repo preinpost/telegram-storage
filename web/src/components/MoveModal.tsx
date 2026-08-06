@@ -1,5 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
+import { Dialog } from '@base-ui-components/react/dialog';
+import { cn } from '../cn';
 import { useT } from '../i18n';
+import { btn, btnPrimary, iconBtn } from '../ui';
 import type { FileItem, FolderNode } from '../types';
 
 interface Props {
@@ -19,6 +22,9 @@ interface FlatFolder {
  * Folder picker for moving a file. Renders a flattened, indented folder list
  * (root → leaves) plus a "root" option. The parent passes `key={file.id}` so
  * state resets per file.
+ *
+ * Built on Base UI's headless Dialog (ESC / backdrop / focus trap handled by
+ * the primitive). Closing is suppressed while a move is in flight.
  */
 export default function MoveModal({ file, folders, onClose, onMove }: Props) {
   const t = useT();
@@ -38,14 +44,6 @@ export default function MoveModal({ file, folders, onClose, onMove }: Props) {
     return out;
   }, [folders]);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !busy) onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [busy, onClose]);
-
   const submit = async () => {
     setBusy(true);
     setError('');
@@ -58,63 +56,74 @@ export default function MoveModal({ file, folders, onClose, onMove }: Props) {
   };
 
   return (
-    <div className="modal-overlay" onClick={busy ? undefined : onClose}>
-      <div
-        className="modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t('move.title')}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="modal-header">
-          <h2>{t('move.title')}</h2>
-          <button type="button" className="icon-btn" title={t('common.close')} onClick={onClose}>
-            ✕
-          </button>
-        </div>
-        <div className="modal-body">
-          <p className="move-file-name" title={file.name}>
-            📄 {file.name}
-          </p>
-          <span className="settings-label">{t('move.choose')}</span>
-          <div className="move-folder-list">
+    <Dialog.Root
+      open
+      onOpenChange={(next) => {
+        if (!next && !busy) onClose();
+      }}
+      disablePointerDismissal={busy}
+    >
+      <Dialog.Portal>
+        <Dialog.Backdrop className="fixed inset-0 z-[900] flex items-center justify-center bg-[rgba(16,24,40,0.45)] p-4 transition-opacity duration-150 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0" />
+        <Dialog.Popup className="fixed left-1/2 top-1/2 z-[910] w-full max-w-[420px] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-panel p-5 shadow-modal outline-none transition-all duration-150 data-[starting-style]:translate-y-[calc(-50%+6px)] data-[starting-style]:opacity-0 data-[ending-style]:translate-y-[calc(-50%+6px)] data-[ending-style]:opacity-0">
+          <div className="mb-4 flex items-center justify-between">
+            <Dialog.Title className="m-0 text-lg font-bold">{t('move.title')}</Dialog.Title>
+            <Dialog.Close className={iconBtn} title={t('common.close')} disabled={busy}>
+              ✕
+            </Dialog.Close>
+          </div>
+          <div className="flex flex-col gap-4">
+            <p className="m-0 truncate font-semibold" title={file.name}>
+              📄 {file.name}
+            </p>
+            <div className="flex flex-col gap-2">
+              <span className="text-xs text-muted">{t('move.choose')}</span>
+              <div className="mt-1.5 max-h-[260px] overflow-y-auto rounded-lg border border-border">
+                <button
+                  type="button"
+                  className={cn(
+                    'flex w-full cursor-pointer items-center gap-1.5 border-0 bg-white px-2.5 py-[7px] text-left text-[13px] hover:bg-info-bg',
+                    target === null && 'bg-info-bg font-semibold text-accent-dark',
+                  )}
+                  onClick={() => setTarget(null)}
+                >
+                  <span aria-hidden>📂</span>
+                  {t('common.root')}
+                </button>
+                {flat.map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    className={cn(
+                      'flex w-full cursor-pointer items-center gap-1.5 border-0 bg-white px-2.5 py-[7px] text-left text-[13px] hover:bg-info-bg',
+                      target === f.id && 'bg-info-bg font-semibold text-accent-dark',
+                    )}
+                    style={{ paddingLeft: 10 + f.depth * 18 }}
+                    onClick={() => setTarget(f.id)}
+                  >
+                    <span aria-hidden>📁</span>
+                    {f.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {error !== '' && <p className="m-0 text-xs text-danger">{error}</p>}
+          </div>
+          <div className="mt-[18px] flex justify-end gap-2">
+            <Dialog.Close className={btn} disabled={busy}>
+              {t('common.cancel')}
+            </Dialog.Close>
             <button
               type="button"
-              className={`move-folder-row ${target === null ? 'active' : ''}`}
-              onClick={() => setTarget(null)}
+              className={`${btn} ${btnPrimary}`}
+              onClick={() => void submit()}
+              disabled={busy}
             >
-              <span aria-hidden>📂</span>
-              {t('common.root')}
+              {t('move.confirm')}
             </button>
-            {flat.map((f) => (
-              <button
-                key={f.id}
-                type="button"
-                className={`move-folder-row ${target === f.id ? 'active' : ''}`}
-                style={{ paddingLeft: 10 + f.depth * 18 }}
-                onClick={() => setTarget(f.id)}
-              >
-                <span aria-hidden>📁</span>
-                {f.name}
-              </button>
-            ))}
           </div>
-          {error !== '' && <p className="form-error">{error}</p>}
-        </div>
-        <div className="modal-footer">
-          <button type="button" className="btn" onClick={onClose} disabled={busy}>
-            {t('common.cancel')}
-          </button>
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => void submit()}
-            disabled={busy}
-          >
-            {t('move.confirm')}
-          </button>
-        </div>
-      </div>
-    </div>
+        </Dialog.Popup>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }

@@ -1,5 +1,7 @@
 import { useState, type FormEvent } from 'react';
+import { cn } from '../cn';
 import { useT } from '../i18n';
+import { btn, btnDanger, btnPrimary, btnSmall, chip, input, roleBadge, roleBadgeAdmin } from '../ui';
 import type { Permission, Role } from '../types';
 import { useToasts } from './Toasts';
 
@@ -65,45 +67,45 @@ export default function PermissionsPanel({
   };
 
   return (
-    <div className="perm-panel">
-      <div className="perm-header">
-        <span className="perm-title">{t('perm.title', { name: folderName })}</span>
-        <span className="role-badge admin">{t('role.admin')}</span>
+    <div className="flex w-[300px] flex-col gap-2.5 overflow-auto rounded-lg border border-border bg-panel p-3 shadow-card">
+      <div className="flex items-center gap-2">
+        <span className="truncate font-bold">{t('perm.title', { name: folderName })}</span>
+        <span className={cn(roleBadge, roleBadgeAdmin)}>{t('role.admin')}</span>
       </div>
 
-      <form className="grant-form" onSubmit={submitGrant}>
-        <div className="grant-row">
+      <form className="flex flex-col gap-1.5" onSubmit={submitGrant}>
+        <div className="flex items-center gap-1.5">
           <input
-            className="grant-user"
+            className={`${input} min-w-0 flex-1`}
             value={userId}
             onChange={(e) => setUserId(e.target.value)}
             placeholder={t('perm.userIdPlaceholder')}
             inputMode="numeric"
             maxLength={12}
           />
-          <select value={role} onChange={(e) => setRole(e.target.value as Role)}>
+          <select className="rounded-lg border border-border bg-white px-1.5 py-[7px] text-xs" value={role} onChange={(e) => setRole(e.target.value as Role)}>
             {ROLES.map((r) => (
               <option key={r} value={r}>
                 {t(`role.${r}`)}
               </option>
             ))}
           </select>
-          <button type="submit" className="btn btn-small btn-primary" disabled={busy || !userId.trim()}>
+          <button type="submit" className={`${btn} ${btnSmall} ${btnPrimary}`} disabled={busy || !userId.trim()}>
             {t('perm.grant')}
           </button>
         </div>
       </form>
 
-      <div className="perm-members">
-        <div className="perm-member owner" title={t('perm.ownerTitle')}>
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-center gap-1.5 rounded-lg border border-warn-line bg-warn-bg px-2 py-1.5" title={t('perm.ownerTitle')}>
           <span>User #{ownerId}</span>
-          <span className="role-badge admin">{t('perm.owner')}</span>
+          <span className={cn(roleBadge, roleBadgeAdmin)}>{t('perm.owner')}</span>
         </div>
 
         {permissions === null && (
-          <div className="perm-loading">
+          <div className="text-xs text-muted">
             {t('browser.permsLoadFailed')}.{' '}
-            <button type="button" className="btn btn-small" onClick={onRetry}>
+            <button type="button" className={`${btn} ${btnSmall}`} onClick={onRetry}>
               {t('common.retry')}
             </button>
           </div>
@@ -111,9 +113,10 @@ export default function PermissionsPanel({
 
         {permissions !== null &&
           permissions.map((p) => (
-            <div key={p.id} className="perm-member">
-              <span className="perm-user">User #{p.userId}</span>
+            <div key={p.id} className="flex items-center gap-1.5 rounded-lg border border-border bg-row-alt px-2 py-1.5">
+              <span className="flex-1 truncate font-semibold">User #{p.userId}</span>
               <select
+                className="rounded-lg border border-border bg-white px-1.5 py-0.5 text-xs"
                 value={p.role}
                 onChange={(e) => changeRole(p, e.target.value as Role)}
                 title={t('perm.changeRole')}
@@ -126,7 +129,7 @@ export default function PermissionsPanel({
               </select>
               <button
                 type="button"
-                className="btn btn-small danger"
+                className={`${btn} ${btnSmall} ${btnDanger}`}
                 onClick={() => void onRevoke(p.userId)}
               >
                 {t('perm.revoke')}
@@ -136,13 +139,13 @@ export default function PermissionsPanel({
       </div>
 
       {knownUserIds.length > 0 && (
-        <div className="known-users">
-          <span className="known-label">{t('perm.knownUsers')}</span>
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-dashed border-border pt-2">
+          <span className="text-xs text-muted">{t('perm.knownUsers')}</span>
           {knownUserIds.map((id) => (
             <button
               key={id}
               type="button"
-              className="chip"
+              className={chip}
               title={t('perm.knownUsersTitle')}
               onClick={() => setUserId(id)}
             >

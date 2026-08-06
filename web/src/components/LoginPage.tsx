@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api, errorMessage } from '../api';
 import { useI18n } from '../i18n';
+import { btn, btnPrimary, input } from '../ui';
 import type { AuthConfig, User } from '../types';
 import { useToasts } from './Toasts';
 
@@ -43,16 +44,16 @@ export default function LoginPage({ config, onLogin }: Props) {
   );
 
   return (
-    <div className="login-page">
-      <div className="login-card">
-        <h1>📁 Telegram Storage</h1>
-        <p className="login-sub">{t('login.subtitle')}</p>
+    <div className="flex h-full items-center justify-center p-4">
+      <div className="w-full max-w-[380px] rounded-xl border border-border bg-panel p-8 text-center shadow-card">
+        <h1 className="mb-1 text-[22px] font-bold">📁 Telegram Storage</h1>
+        <p className="mb-5 text-muted">{t('login.subtitle')}</p>
         {config.devAuth ? (
           <DevLoginForm onLogin={onLogin} />
         ) : config.botUsername ? (
           <TelegramWidget botUsername={config.botUsername} onAuth={handleTelegramAuth} />
         ) : (
-          <p className="login-error">
+          <p className="break-all rounded-lg border border-danger-line bg-danger-bg p-2.5 text-[13px] text-danger-strong">
             {t('login.notConfiguredIntro')} <code>DEV_AUTH=true</code> {t('login.or')}{' '}
             <code>TELEGRAM_BOT_USERNAME</code> {t('login.notConfiguredOutro')}
           </p>
@@ -84,10 +85,11 @@ function DevLoginForm({ onLogin }: { onLogin: (user: User) => void }) {
   };
 
   return (
-    <form className="login-form" onSubmit={submit}>
-      <label className="field">
-        <span>{t('login.username')}</span>
+    <form className="flex flex-col gap-3 text-left" onSubmit={submit}>
+      <label className="flex flex-col gap-1">
+        <span className="text-xs text-muted">{t('login.username')}</span>
         <input
+          className={input}
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           placeholder={t('login.usernamePlaceholder')}
@@ -96,14 +98,14 @@ function DevLoginForm({ onLogin }: { onLogin: (user: User) => void }) {
           required
         />
       </label>
-      <label className="field">
-        <span>{t('login.displayName')}</span>
-        <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} maxLength={64} />
+      <label className="flex flex-col gap-1">
+        <span className="text-xs text-muted">{t('login.displayName')}</span>
+        <input className={input} value={displayName} onChange={(e) => setDisplayName(e.target.value)} maxLength={64} />
       </label>
-      <button type="submit" className="btn btn-primary" disabled={busy || !username.trim()}>
+      <button type="submit" className={`${btn} ${btnPrimary} justify-center`} disabled={busy || !username.trim()}>
         {busy ? t('login.signingIn') : t('login.signIn')}
       </button>
-      <p className="login-hint">{t('login.devModeHint')}</p>
+      <p className="mt-3 text-xs text-muted">{t('login.devModeHint')}</p>
     </form>
   );
 }
@@ -140,7 +142,7 @@ function TelegramWidget({
   }, [botUsername, onAuth]);
 
   return (
-    <p className="login-hint">
+    <p className="mt-3 text-xs text-muted">
       {t('login.telegramHint1')}
       <br />
       {t('login.telegramHint2')}

@@ -1,13 +1,10 @@
-import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, type ReactNode } from 'react';
+import { Toast } from '@base-ui-components/react/toast';
+import { cn } from '../cn';
 import { useT } from '../i18n';
+import { iconBtn } from '../ui';
 
 export type ToastKind = 'error' | 'success' | 'info';
-
-export interface Toast {
-  id: number;
-  kind: ToastKind;
-  message: string;
-}
 
 interface ToastApi {
   push: (kind: ToastKind, message: string) => void;
@@ -15,35 +12,57 @@ interface ToastApi {
 
 const ToastContext = createContext<ToastApi | null>(null);
 
+/**
+ * Toast host built on Base UI's headless Toast primitives (provider, viewport,
+ * root, title, close). Base UI handles mount/unmount, auto-dismiss timeouts,
+ * enter/exit transition attributes (`data-starting-style` / `data-ending-style`)
+ * and the `data-type` attribute used for kind-specific styling.
+ */
 export function ToastProvider({ children }: { children: ReactNode }) {
-  const t = useT();
-  const [toasts, setToasts] = useState<Toast[]>([]);
-  const nextId = useRef(1);
+  return (
+    <Toast.Provider timeout={6000} limit={5}>
+      <ToastHost>{children}</ToastHost>
+    </Toast.Provider>
+  );
+}
 
-  const push = useCallback((kind: ToastKind, message: string) => {
-    const id = nextId.current++;
-    setToasts((all) => [...all, { id, kind, message }]);
-    window.setTimeout(() => {
-      setToasts((all) => all.filter((t) => t.id !== id));
-    }, 6000);
-  }, []);
+function ToastHost({ children }: { children: ReactNode }) {
+  const { toasts, add, close } = Toast.useToastManager();
+  const t = useT();
+
+  const push = useCallback(
+    (kind: ToastKind, message: string) => {
+      add({ title: message, type: kind });
+    },
+    [add],
+  );
 
   return (
     <ToastContext.Provider value={{ push }}>
       {children}
-      <div className="toasts" aria-live="polite">
+      <Toast.Viewport className="fixed top-3.5 right-3.5 z-[1000] flex max-w-[380px] flex-col gap-2 outline-none">
         {toasts.map((toast) => (
-          <button
+          <Toast.Root
             key={toast.id}
-            type="button"
-            className={`toast toast-${toast.kind}`}
-            onClick={() => setToasts((all) => all.filter((x) => x.id !== toast.id))}
-            title={t('common.close')}
+            toast={toast}
+            onClick={() => close(toast.id)}
+            className={cn(
+              'relative cursor-pointer rounded-lg border border-border bg-panel p-3.5 text-left shadow-card',
+              'transition-all duration-200 ease-out',
+              'data-[starting-style]:-translate-y-1 data-[starting-style]:opacity-0',
+              'data-[ending-style]:-translate-y-1 data-[ending-style]:opacity-0',
+              'data-[type=error]:border-danger-line data-[type=error]:bg-danger-bg data-[type=error]:text-danger-strong',
+              'data-[type=success]:border-ok-line data-[type=success]:bg-ok-bg data-[type=success]:text-ok-strong',
+              'data-[type=info]:border-info-line data-[type=info]:bg-info-bg data-[type=info]:text-info-strong',
+            )}
           >
-            {toast.message}
-          </button>
+            <Toast.Title className="pr-4 text-sm font-normal">{toast.title}</Toast.Title>
+            <Toast.Close className={cn(iconBtn, 'absolute top-1 right-1.5')} title={t('common.close')}>
+              ✕
+            </Toast.Close>
+          </Toast.Root>
         ))}
-      </div>
+      </Toast.Viewport>
     </ToastContext.Provider>
   );
 }

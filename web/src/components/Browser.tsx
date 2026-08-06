@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, ApiError, errorMessage, isAbortError, uploadFile } from '../api';
+import { cn } from '../cn';
 import { useT } from '../i18n';
+import { btn, btnSmall, iconBtn, roleBadge, roleBadgeAdmin } from '../ui';
 import type { FileItem, FolderNode, Permission, Role, User } from '../types';
 import FileList from './FileList';
 import FolderTree from './FolderTree';
@@ -275,20 +277,20 @@ export default function Browser({ user, onLogout }: Props) {
   // ---- render ---------------------------------------------------------------
 
   return (
-    <div className="app">
-      <header className="topbar">
-        <div className="brand">📁 Telegram Storage</div>
-        <div className="user-menu">
-          <span className="user-name" title={`@${user.username}`}>
+    <div className="flex h-full flex-col">
+      <header className="flex items-center justify-between border-b border-border bg-panel px-4 py-2.5">
+        <div className="text-base font-bold">📁 Telegram Storage</div>
+        <div className="flex items-center gap-2">
+          <span className="font-semibold" title={`@${user.username}`}>
             {user.displayName || user.username}
           </span>
-          <span className={`role-badge ${user.role === 'admin' ? 'admin' : ''}`}>{user.role}</span>
-          <button type="button" className="btn btn-small" onClick={() => void onLogout()}>
+          <span className={cn(roleBadge, user.role === 'admin' && roleBadgeAdmin)}>{user.role}</span>
+          <button type="button" className={`${btn} ${btnSmall}`} onClick={() => void onLogout()}>
             {t('common.logout')}
           </button>
           <button
             type="button"
-            className="icon-btn gear-btn"
+            className={cn(iconBtn, 'text-base opacity-70 hover:opacity-100')}
             title={t('settings.openTitle')}
             onClick={() => setSettingsOpen(true)}
           >
@@ -299,8 +301,8 @@ export default function Browser({ user, onLogout }: Props) {
 
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
-      <div className="layout">
-        <aside className="sidebar">
+      <div className="grid min-h-0 flex-1 grid-cols-[280px_minmax(0,1fr)_auto] gap-3 p-3">
+        <aside className="min-w-[240px] overflow-auto rounded-lg border border-border bg-panel shadow-card">
           <FolderTree
             nodes={folders ?? []}
             selectedId={selectedId}
@@ -312,25 +314,25 @@ export default function Browser({ user, onLogout }: Props) {
           />
         </aside>
 
-        <main className="main">
-          <div className="current-folder">
-            <nav className="breadcrumb" aria-label={t('browser.breadcrumbAria')}>
+        <main className="flex min-w-0 flex-col overflow-auto rounded-lg border border-border bg-panel p-3 shadow-card">
+          <div className="mb-2.5 flex items-center gap-2 border-b border-border pb-2.5">
+            <nav className="flex min-w-0 flex-wrap items-center gap-0.5" aria-label={t('browser.breadcrumbAria')}>
               {path.map((seg, i) => {
                 const isLast = i === path.length - 1;
                 // The root crumb is translated at render time so it follows
                 // language switches without recomputing the memoized path.
                 const label = seg.id === null ? t('common.root') : seg.name;
                 return (
-                  <span key={seg.id ?? 'root'} className="crumb">
-                    {i > 0 && <span className="crumb-sep">/</span>}
+                  <span key={seg.id ?? 'root'} className="inline-flex items-center gap-0.5">
+                    {i > 0 && <span className="text-muted">/</span>}
                     {isLast ? (
-                      <span className="crumb-current" title={label}>
+                      <span className="truncate font-bold" title={label}>
                         {label}
                       </span>
                     ) : (
                       <button
                         type="button"
-                        className="crumb-link"
+                        className="rounded-md border-0 bg-transparent px-[5px] py-0.5 text-[13px] text-accent hover:bg-info-bg hover:underline"
                         onClick={() => setSelectedId(seg.id)}
                         title={t('browser.gotoFolder', { name: label })}
                       >
@@ -341,25 +343,25 @@ export default function Browser({ user, onLogout }: Props) {
                 );
               })}
             </nav>
-            <span className={`role-badge ${selectedRole === 'admin' ? 'admin' : ''}`}>
+            <span className={cn(roleBadge, selectedRole === 'admin' && roleBadgeAdmin)}>
               {selectedRole}
             </span>
           </div>
-          <div className="search-row">
+          <div className="mb-2.5 flex items-center gap-1.5">
             <input
               type="search"
-              className="search-input"
+              className="max-w-[340px] flex-1 rounded-lg border border-border bg-white px-2.5 py-1.5 focus:border-accent focus:outline-none"
               placeholder={t('search.placeholder')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               aria-label={t('search.placeholder')}
             />
             {searchQuery !== '' && (
-              <button type="button" className="icon-btn" title={t('search.clear')} onClick={clearSearch}>
+              <button type="button" className={iconBtn} title={t('search.clear')} onClick={clearSearch}>
                 ✕
               </button>
             )}
-            {searching && <span className="search-status">{t('common.loading')}</span>}
+            {searching && <span className="text-xs text-muted">{t('common.loading')}</span>}
           </div>
           <FileList
             files={files}

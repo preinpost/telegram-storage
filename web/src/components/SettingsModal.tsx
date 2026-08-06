@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
+import { Dialog } from '@base-ui-components/react/dialog';
 import { api } from '../api';
+import { cn } from '../cn';
 import { formatBytes } from '../format';
 import { LANG_LABELS, useI18n, type Lang } from '../i18n';
+import { btn, btnPrimary, iconBtn } from '../ui';
 import type { Stats } from '../types';
 
 interface Props {
@@ -12,19 +15,13 @@ interface Props {
 /**
  * Settings modal (opened from the gear icon in the topbar).
  * Language preference + storage usage overview.
+ *
+ * Built on Base UI's headless Dialog: ESC / backdrop click close, focus trap
+ * and scroll lock are handled by the primitive.
  */
 export default function SettingsModal({ open, onClose }: Props) {
   const { lang, setLang, t } = useI18n();
   const [stats, setStats] = useState<Stats | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
 
   // Storage stats are best-effort — hide the section quietly on failure.
   useEffect(() => {
@@ -44,86 +41,84 @@ export default function SettingsModal({ open, onClose }: Props) {
     };
   }, [open]);
 
-  if (!open) return null;
-
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div
-        className="modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t('settings.title')}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="modal-header">
-          <h2>⚙️ {t('settings.title')}</h2>
-          <button type="button" className="icon-btn" title={t('common.close')} onClick={onClose}>
-            ✕
-          </button>
-        </div>
-        <div className="modal-body">
-          <div className="settings-group">
-            <span className="settings-label">{t('settings.language')}</span>
-            <div className="lang-options">
-              {(Object.keys(LANG_LABELS) as Lang[]).map((l) => (
-                <button
-                  key={l}
-                  type="button"
-                  className={`lang-option ${lang === l ? 'active' : ''}`}
-                  onClick={() => setLang(l)}
-                >
-                  {LANG_LABELS[l]}
-                </button>
-              ))}
-            </div>
+    <Dialog.Root open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
+      <Dialog.Portal>
+        <Dialog.Backdrop className="fixed inset-0 z-[900] flex items-center justify-center bg-[rgba(16,24,40,0.45)] p-4 transition-opacity duration-150 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0" />
+        <Dialog.Popup className="fixed left-1/2 top-1/2 z-[910] w-full max-w-[420px] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-panel p-5 shadow-modal outline-none transition-all duration-150 data-[starting-style]:translate-y-[calc(-50%+6px)] data-[starting-style]:opacity-0 data-[ending-style]:translate-y-[calc(-50%+6px)] data-[ending-style]:opacity-0">
+          <div className="mb-4 flex items-center justify-between">
+            <Dialog.Title className="m-0 text-lg font-bold">⚙️ {t('settings.title')}</Dialog.Title>
+            <Dialog.Close className={iconBtn} title={t('common.close')}>
+              ✕
+            </Dialog.Close>
           </div>
-          {stats !== null && (
-            <div className="settings-group">
-              <span className="settings-label">{t('settings.storage')}</span>
-              <div className="stats-grid">
-                <div className="stats-item">
-                  <span>{t('settings.totalSize')}</span>
-                  <strong>{formatBytes(stats.totalSize)}</strong>
-                </div>
-                <div className="stats-item">
-                  <span>{t('settings.fileCount')}</span>
-                  <strong>{stats.fileCount}</strong>
-                </div>
-                <div className="stats-item">
-                  <span>{t('settings.folderCount')}</span>
-                  <strong>{stats.folderCount}</strong>
-                </div>
-                <div className="stats-item">
-                  <span>{t('settings.userCount')}</span>
-                  <strong>{stats.userCount}</strong>
-                </div>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <span className="text-xs text-muted">{t('settings.language')}</span>
+              <div className="flex gap-2" role="radiogroup" aria-label={t('settings.language')}>
+                {(Object.keys(LANG_LABELS) as Lang[]).map((l) => (
+                  <button
+                    key={l}
+                    type="button"
+                    role="radio"
+                    aria-checked={lang === l}
+                    className={cn(
+                      'flex-1 cursor-pointer rounded-lg border border-border bg-white px-2.5 py-2 text-[13px] hover:border-accent',
+                      lang === l && 'border-accent bg-accent text-white',
+                    )}
+                    onClick={() => setLang(l)}
+                  >
+                    {LANG_LABELS[l]}
+                  </button>
+                ))}
               </div>
-              {stats.folderUsage.length > 0 && (
-                <>
-                  <span className="settings-label">{t('settings.byFolder')}</span>
-                  <ul className="stats-folder-list">
-                    {stats.folderUsage.map((u) => (
-                      <li key={u.folderId ?? 'root'}>
-                        <span className="stats-folder-name" title={u.name}>
-                          {u.folderId === null ? t('common.root') : u.name}
-                        </span>
-                        <span className="stats-folder-size">
-                          {formatBytes(u.size)} · {u.fileCount}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              )}
             </div>
-          )}
-        </div>
-        <div className="modal-footer">
-          <button type="button" className="btn btn-primary" onClick={onClose}>
-            {t('common.close')}
-          </button>
-        </div>
-      </div>
-    </div>
+            {stats !== null && (
+              <div className="flex flex-col gap-2">
+                <span className="text-xs text-muted">{t('settings.storage')}</span>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="flex flex-col gap-0.5 rounded-lg bg-bg px-2.5 py-2 text-xs text-muted">
+                    <span>{t('settings.totalSize')}</span>
+                    <strong className="text-[15px] text-text">{formatBytes(stats.totalSize)}</strong>
+                  </div>
+                  <div className="flex flex-col gap-0.5 rounded-lg bg-bg px-2.5 py-2 text-xs text-muted">
+                    <span>{t('settings.fileCount')}</span>
+                    <strong className="text-[15px] text-text">{stats.fileCount}</strong>
+                  </div>
+                  <div className="flex flex-col gap-0.5 rounded-lg bg-bg px-2.5 py-2 text-xs text-muted">
+                    <span>{t('settings.folderCount')}</span>
+                    <strong className="text-[15px] text-text">{stats.folderCount}</strong>
+                  </div>
+                  <div className="flex flex-col gap-0.5 rounded-lg bg-bg px-2.5 py-2 text-xs text-muted">
+                    <span>{t('settings.userCount')}</span>
+                    <strong className="text-[15px] text-text">{stats.userCount}</strong>
+                  </div>
+                </div>
+                {stats.folderUsage.length > 0 && (
+                  <>
+                    <span className="text-xs text-muted">{t('settings.byFolder')}</span>
+                    <ul className="m-0 flex max-h-[160px] list-none flex-col gap-1 overflow-y-auto p-0 text-xs">
+                      {stats.folderUsage.map((u) => (
+                        <li key={u.folderId ?? 'root'} className="flex justify-between gap-2">
+                          <span className="truncate" title={u.name}>
+                            {u.folderId === null ? t('common.root') : u.name}
+                          </span>
+                          <span className="whitespace-nowrap text-muted">
+                            {formatBytes(u.size)} · {u.fileCount}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+          <div className="mt-[18px] flex justify-end">
+            <Dialog.Close className={`${btn} ${btnPrimary}`}>{t('common.close')}</Dialog.Close>
+          </div>
+        </Dialog.Popup>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
