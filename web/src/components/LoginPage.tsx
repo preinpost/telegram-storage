@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api, errorMessage } from '../api';
-import { LANG_LABELS, useI18n, type Lang } from '../i18n';
+import { useI18n } from '../i18n';
 import type { AuthConfig, User } from '../types';
 import { useToasts } from './Toasts';
 
@@ -19,7 +19,7 @@ interface TelegramAuthData {
 }
 
 export default function LoginPage({ config, onLogin }: Props) {
-  const { lang, setLang, t } = useI18n();
+  const t = useI18n().t;
   const toasts = useToasts();
 
   const handleTelegramAuth = useCallback(
@@ -57,26 +57,7 @@ export default function LoginPage({ config, onLogin }: Props) {
             <code>TELEGRAM_BOT_USERNAME</code> {t('login.notConfiguredOutro')}
           </p>
         )}
-        <LoginLangSwitcher lang={lang} setLang={setLang} />
       </div>
-    </div>
-  );
-}
-
-/** Compact language switcher shown on the login card (settings modal covers the main app). */
-function LoginLangSwitcher({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
-  return (
-    <div className="login-langs">
-      {(Object.keys(LANG_LABELS) as Lang[]).map((l) => (
-        <button
-          key={l}
-          type="button"
-          className={`lang-link ${lang === l ? 'active' : ''}`}
-          onClick={() => setLang(l)}
-        >
-          {LANG_LABELS[l]}
-        </button>
-      ))}
     </div>
   );
 }

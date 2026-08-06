@@ -802,35 +802,6 @@ select {
   color: #fff;
 }
 
-/* ---- login page language switcher ---- */
-
-.login-langs {
-  display: flex;
-  justify-content: center;
-  gap: 6px;
-  margin-top: 16px;
-}
-
-.lang-link {
-  border: 1px solid var(--border);
-  background: #fff;
-  border-radius: 999px;
-  padding: 2px 10px;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.lang-link:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.lang-link.active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
-
 /* ---- search ---- */
 
 .search-row {
