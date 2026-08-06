@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { promises as fsp } from 'node:fs';
 import { join } from 'node:path';
 import type { Readable } from 'node:stream';
@@ -83,6 +84,7 @@ export async function commitUpload(
   try {
     const fd = await fsp.open(spool.bodyPath, 'r');
     const sent: SentPart[] = [];
+    const fileHash = createHash('sha256');
     try {
       let offset = 0;
       let partIndex = 0;
@@ -94,6 +96,7 @@ export async function commitUpload(
           throw new HttpError(500, `short read while splitting file (part ${partIndex})`);
         }
         const checksum = sha256(buf);
+        fileHash.update(buf); // cumulative full-file hash (download-cache key)
         const result = await deps.queue.run(() =>
           deps.tg.sendDocument({
             chatId: deps.chatId as string,
@@ -119,7 +122,7 @@ export async function commitUpload(
 
     const now = Date.now();
     const id = deps.db.insertFileWithParts(
-      { name: input.name, size: spool.size, mime: input.mime },
+      { name: input.name, size: spool.size, mime: input.mime, sha256: fileHash.digest('hex') },
       sent,
       now,
       input.folderId,

@@ -32,6 +32,14 @@ export interface Config {
   devAuth: boolean;
   /** Secret signing session cookies. null → ephemeral secret (sessions die on restart). */
   sessionSecret: string | null;
+  /** Login rate limit per minute (0 disables throttling). Default 10. */
+  rateLimitPerMinute: number;
+  /** Download-cache directory; empty → cache disabled. */
+  cacheDir: string;
+  /** Download-cache size cap in MiB (LRU eviction). Default 1024. */
+  cacheMaxMb: number;
+  /** Add the Secure flag to session cookies (deployments behind HTTPS). */
+  cookieSecure: boolean;
 }
 
 function int(value: string | undefined, fallback: number, label: string): number {
@@ -65,5 +73,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     host: env.HOST || '0.0.0.0',
     devAuth: env.DEV_AUTH === 'true' || env.DEV_AUTH === '1',
     sessionSecret: env.SESSION_SECRET?.trim() || null,
+    rateLimitPerMinute: int(env.RATE_LIMIT_PER_MINUTE, 10, 'RATE_LIMIT_PER_MINUTE'),
+    cacheDir: env.CACHE_DIR?.trim() || '',
+    cacheMaxMb: int(env.CACHE_MAX_MB, 1024, 'CACHE_MAX_MB'),
+    cookieSecure: env.COOKIE_SECURE === 'true' || env.COOKIE_SECURE === '1',
   };
 }

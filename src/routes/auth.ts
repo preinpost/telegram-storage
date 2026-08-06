@@ -1,21 +1,29 @@
 import { Hono } from 'hono';
-import type { Context } from 'hono';
-import { deleteCookie, setCookie } from 'hono/cookie';
+import type { Context, MiddlewareHandler } from 'hono';
+import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import type { AppDeps, AppEnv } from '../app.ts';
 import { requireAuth } from '../auth/middleware.ts';
-import { SESSION_COOKIE_NAME, SESSION_TTL_MS, signSession } from '../auth/session.ts';
+import {
+  SESSION_COOKIE_NAME,
+  SESSION_TTL_MS,
+  signSession,
+  verifySession,
+} from '../auth/session.ts';
 import { verifyTelegramAuth } from '../auth/telegram.ts';
 import type { UserRow } from '../db.ts';
 import { HttpError } from '../errors.ts';
+import { clientKeyOf, rateLimitMiddleware, SlidingWindowRateLimiter } from '../rate-limit.ts';
 
 /**
  * POST /api/auth/telegram — Telegram Login Widget callback (form data).
  * POST /api/auth/dev-login — dev-only username login (DEV_AUTH=true).
  * GET  /api/auth/me        — current user.
- * POST /api/auth/logout    — clears the session cookie.
+ * POST /api/auth/logout    — clears the session cookie and revokes the session.
  */
 export function authRoutes(deps: AppDeps, sessionSecret: string): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
+  const secure = deps.cookieSecure === true;
+  const rateLimit = loginRateLimitGuard(deps);
 
   /**
    * GET /api/auth/config — public auth-mode advertisement for the web UI:
@@ -26,7 +34,7 @@ export function authRoutes(deps: AppDeps, sessionSecret: string): Hono<AppEnv> {
     return c.json({ devAuth: deps.devAuth, botUsername: deps.botUsername ?? null });
   });
 
-  app.post('/telegram', async (c) => {
+  app.post('/telegram', rateLimit, async (c) => {
     if (!deps.botToken) {
       throw new HttpError(503, 'telegram auth requires a bot token (TELEGRAM_BOT_TOKEN)');
     }
@@ -47,11 +55,11 @@ export function authRoutes(deps: AppDeps, sessionSecret: string): Hono<AppEnv> {
       displayName,
       now,
     );
-    setSessionCookie(c, sessionSecret, user.id, now);
+    setSessionCookie(c, sessionSecret, user, now, secure);
     return c.json({ user: toUserJson(user) });
   });
 
-  app.post('/dev-login', async (c) => {
+  app.post('/dev-login', rateLimit, async (c) => {
     if (!deps.devAuth) {
       throw new HttpError(401, 'dev auth is disabled (set DEV_AUTH=true to enable)');
     }
@@ -66,7 +74,7 @@ export function authRoutes(deps: AppDeps, sessionSecret: string): Hono<AppEnv> {
         : username;
     const now = Date.now();
     const user = deps.db.findOrCreateUser(null, username, displayName, now);
-    setSessionCookie(c, sessionSecret, user.id, now);
+    setSessionCookie(c, sessionSecret, user, now, secure);
     return c.json({ user: toUserJson(user) });
   });
 
@@ -74,7 +82,17 @@ export function authRoutes(deps: AppDeps, sessionSecret: string): Hono<AppEnv> {
     return c.json({ user: toUserJson(c.get('user')) });
   });
 
+  /**
+   * Logout clears the cookie AND bumps users.sess_version, so any token
+   * issued before this moment (including a replayed stolen cookie) is
+   * rejected by requireAuth from now on.
+   */
   app.post('/logout', (c) => {
+    const payload = verifySession(getCookie(c, SESSION_COOKIE_NAME), sessionSecret);
+    if (payload) {
+      const user = deps.db.getUserById(payload.uid);
+      if (user) deps.db.bumpSessionVersion(user.id);
+    }
     deleteCookie(c, SESSION_COOKIE_NAME, { path: '/' });
     return c.body(null, 204);
   });
@@ -82,21 +100,49 @@ export function authRoutes(deps: AppDeps, sessionSecret: string): Hono<AppEnv> {
   return app;
 }
 
-function setSessionCookie(c: Context, secret: string, userId: number, now: number): void {
-  setCookie(c, SESSION_COOKIE_NAME, signSession(secret, userId, now), sessionCookieOptions());
+/**
+ * Rate-limit middleware for the two login endpoints, or a no-op pass-through
+ * when RATE_LIMIT_PER_MINUTE is 0 (disabled). The limiter instance is shared
+ * by both endpoints so attempts against either count toward the same budget.
+ */
+function loginRateLimitGuard(deps: AppDeps): MiddlewareHandler<AppEnv> {
+  const perMinute = deps.rateLimitPerMinute ?? 10;
+  if (perMinute <= 0) {
+    return async (_c, next) => next();
+  }
+  const limiter = new SlidingWindowRateLimiter(60_000, perMinute);
+  return rateLimitMiddleware(limiter, clientKeyOf);
+}
+
+function setSessionCookie(
+  c: Context,
+  secret: string,
+  user: UserRow,
+  now: number,
+  secure: boolean,
+): void {
+  // Sign with the user's CURRENT sess_version so a later logout (version +1)
+  // invalidates this exact token.
+  setCookie(
+    c,
+    SESSION_COOKIE_NAME,
+    signSession(secret, user.id, now, undefined, user.sess_version),
+    sessionCookieOptions(secure),
+  );
 }
 
 /**
- * httpOnly + SameSite=Lax (CSRF protection for same-origin calls). Not marked
- * Secure: local dev runs over plain HTTP; deployments behind HTTPS should set
- * a reverse proxy / consider adding Secure via env in a later milestone.
+ * httpOnly + SameSite=Lax (CSRF protection for same-origin calls). The Secure
+ * flag is opt-in via COOKIE_SECURE=true (deployments behind HTTPS) because
+ * local dev runs over plain HTTP.
  */
-function sessionCookieOptions(): Parameters<typeof setCookie>[3] {
+function sessionCookieOptions(secure: boolean): Parameters<typeof setCookie>[3] {
   return {
     httpOnly: true,
     sameSite: 'Lax',
     path: '/',
     maxAge: SESSION_TTL_MS / 1000,
+    ...(secure ? { secure: true } : {}),
   };
 }
 

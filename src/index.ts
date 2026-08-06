@@ -1,6 +1,7 @@
 import { serve } from '@hono/node-server';
 import { join } from 'node:path';
 import { createApp } from './app.ts';
+import { DiskCache } from './cache.ts';
 import { loadConfig } from './config.ts';
 import { Db } from './db.ts';
 import { RateLimitQueue } from './queue.ts';
@@ -31,6 +32,11 @@ if (config.devAuth) {
     'WARNING: DEV_AUTH=true — POST /api/auth/dev-login (username → session) is enabled. Disable it in production.',
   );
 }
+if (config.cacheDir) {
+  console.warn(
+    `Download cache enabled: ${config.cacheDir} (cap ${config.cacheMaxMb} MiB). Large downloads are fully assembled before streaming.`,
+  );
+}
 
 const app = createApp({
   db,
@@ -42,6 +48,9 @@ const app = createApp({
   botUsername: config.botUsername,
   devAuth: config.devAuth,
   sessionSecret: config.sessionSecret,
+  cache: config.cacheDir ? new DiskCache(config.cacheDir, config.cacheMaxMb * 1024 * 1024) : null,
+  rateLimitPerMinute: config.rateLimitPerMinute,
+  cookieSecure: config.cookieSecure,
 });
 
 serve({ fetch: app.fetch, port: config.port, hostname: config.host }, (info) => {

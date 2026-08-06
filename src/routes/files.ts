@@ -1,8 +1,9 @@
 import { Hono } from 'hono';
+import type { Context } from 'hono';
 import type { AppDeps, AppEnv } from '../app.ts';
 import { requireAuth } from '../auth/middleware.ts';
 import { rankOf, requireRole, resolveFileRole } from '../auth/permissions.ts';
-import type { FileRow } from '../db.ts';
+import type { Db, FileRow } from '../db.ts';
 import { openDownload } from '../download.ts';
 import { HttpError } from '../errors.ts';
 import { parseFilePart } from '../multipart.ts';
@@ -13,6 +14,12 @@ import type { SpooledUpload } from '../upload.ts';
  * File routes — all require authentication. Files live either at the root
  * (folder_id = NULL) or inside a folder; every operation is gated by the
  * caller's effective role on the containing folder.
+ *
+ *   GET    /                  list (folder_id=… or root) or search (?q=…)
+ *   POST   /                  upload (multipart, folder_id optional)
+ *   PATCH  /:id               move to another folder ({ folderId })
+ *   GET    /:id/download      stream (checksum-verified, cache-aware)
+ *   DELETE /:id               logical delete
  */
 export function filesRoutes(deps: AppDeps, sessionSecret: string): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
@@ -20,6 +27,10 @@ export function filesRoutes(deps: AppDeps, sessionSecret: string): Hono<AppEnv> 
 
   app.get('/', (c) => {
     const user = c.get('user');
+    const q = c.req.query('q');
+    if (q !== undefined && q !== '') {
+      return c.json({ files: searchFiles(deps, user.id, q, c.req.query('folder_id')) });
+    }
     const raw = c.req.query('folder_id');
     let files: FileRow[];
     if (raw === undefined || raw === '') {
@@ -88,6 +99,32 @@ export function filesRoutes(deps: AppDeps, sessionSecret: string): Hono<AppEnv> 
     });
   });
 
+  app.patch('/:id', async (c) => {
+    const user = c.get('user');
+    const id = parseFileId(c.req.param('id'));
+    const file = deps.db.getFile(id);
+    if (!file || file.deleted_at !== null) throw new HttpError(404, 'file not found');
+    // write on the source folder (root: members default write)
+    if (rankOf(resolveFileRole(deps.db, user, file.folder_id)) < rankOf('write')) {
+      throw new HttpError(403, 'write permission required on the source folder');
+    }
+    const body = await readJson(c);
+    if (!('folderId' in body)) {
+      throw new HttpError(400, 'folderId is required');
+    }
+    const folderId = parseOptionalFolderId(body.folderId);
+    if (folderId !== null) {
+      const folder = deps.db.getFolder(folderId);
+      if (!folder) throw new HttpError(404, 'target folder not found');
+      requireRole(deps.db, user.id, folderId, 'write');
+    }
+    if (file.folder_id === folderId) {
+      return c.json(toFileJson(file)); // no-op move
+    }
+    deps.db.updateFileFolder(id, folderId, Date.now());
+    return c.json(toFileJson(deps.db.getFile(id)!));
+  });
+
   app.delete('/:id', (c) => {
     const user = c.get('user');
     const id = parseFileId(c.req.param('id'));
@@ -116,6 +153,71 @@ function folderIdFromFields(
   if (!folder) throw new HttpError(404, 'folder not found');
   requireRole(deps.db, userId, folderId, 'write');
   return folderId;
+}
+
+/**
+ * Name-substring search with permission filtering.
+ * - folder_id given → scope to that folder's subtree (read required on it)
+ * - folder_id omitted → every active file the caller may read
+ * Results include the containing folder path (root → folder).
+ */
+function searchFiles(deps: AppDeps, userId: number, query: string, rawFolderId?: string): unknown[] {
+  let scopeFolderId: number | null = null;
+  if (rawFolderId !== undefined && rawFolderId !== '') {
+    scopeFolderId = parseId(rawFolderId, 'folder_id');
+    const folder = deps.db.getFolder(scopeFolderId);
+    if (!folder) throw new HttpError(404, 'folder not found');
+    requireRole(deps.db, userId, scopeFolderId, 'read');
+  }
+  return deps.db
+    .searchFiles(query)
+    .filter((file) => {
+      if (scopeFolderId !== null && !isInSubtree(deps.db, file.folder_id, scopeFolderId)) {
+        return false;
+      }
+      const user = deps.db.getUserById(userId);
+      if (!user) throw new HttpError(401, 'user not found');
+      return rankOf(resolveFileRole(deps.db, user, file.folder_id)) >= rankOf('read');
+    })
+    .map((file) => ({ ...toFileJson(file), folderPath: folderPathOf(deps.db, file.folder_id) }));
+}
+
+/** True when folderId is scopeId or one of its descendants. */
+function isInSubtree(db: Db, folderId: number | null, scopeId: number): boolean {
+  let cursor: number | null = folderId;
+  for (let hop = 0; hop < 1000 && cursor !== null; hop++) {
+    if (cursor === scopeId) return true;
+    cursor = db.getFolder(cursor)?.parent_id ?? null;
+  }
+  return false;
+}
+
+/** Root-to-folder path entries (empty array for root files). */
+function folderPathOf(db: Db, folderId: number | null): Array<{ id: string; name: string }> {
+  const path: Array<{ id: string; name: string }> = [];
+  let cursor: number | null = folderId;
+  for (let hop = 0; hop < 1000 && cursor !== null; hop++) {
+    const folder = db.getFolder(cursor);
+    if (!folder) break;
+    path.unshift({ id: String(folder.id), name: folder.name });
+    cursor = folder.parent_id;
+  }
+  return path;
+}
+
+async function readJson(c: Context): Promise<Record<string, unknown>> {
+  const body = await c.req.json().catch(() => {
+    throw new HttpError(400, 'invalid JSON body');
+  });
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    throw new HttpError(400, 'invalid JSON body');
+  }
+  return body as Record<string, unknown>;
+}
+
+function parseOptionalFolderId(raw: unknown): number | null {
+  if (raw === undefined || raw === null || raw === '') return null;
+  return parseId(String(raw), 'folderId');
 }
 
 function toFileJson(file: FileRow): Record<string, unknown> {

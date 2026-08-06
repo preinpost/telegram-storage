@@ -103,6 +103,10 @@ npm start          # 실행
 | `TELEGRAM_BOT_USERNAME` | 봇 유저네임 (예: `my_storage_bot`) | 웹 UI의 텔레그램 로그인 위젯 버튼용 (`GET /api/auth/config`가 노출) |
 | `SESSION_SECRET` | 임의의 긴 문자열 | 세션 쿠키 HMAC 서명. 비우면 재시작마다 세션 만료 |
 | `DEV_AUTH` | `true`/`false` | `true`면 `POST /api/auth/dev-login`(username → 세션) 허용 — 로컬 개발/테스트 전용, **실전에선 false** |
+| `RATE_LIMIT_PER_MINUTE` | 정수 (기본 10, `0`=비활성) | 로그인 엔드포인트 IP당 분당 시도 제한. 초과 시 `429` + `Retry-After` |
+| `COOKIE_SECURE` | `true`/`false` | `true`면 세션 쿠키에 `Secure` 플래그 (HTTPS 배포 전용) |
+| `CACHE_DIR` | 디렉터리 경로 (기본 비어 있음) | 지정 시 다운로드 디스크 캐시 활성화 (키 = 파일 sha256) |
+| `CACHE_MAX_MB` | 정수 (기본 1024) | 캐시 크기 상한. 초과 시 LRU로 정리 |
 | @BotFather `/setdomain` | 도메인 | 위젯 동작 도메인 (로컬은 `localhost:3000`) |
 
 ## 인증 / 권한 모델 (M3)
@@ -115,7 +119,7 @@ npm start          # 실행
 - **개발/테스트**: `DEV_AUTH=true` 시 `POST /api/auth/dev-login` (`{"username":"alice"}`) → 즉시 세션.
   **첫 로그인한 사용자는 자동으로 `admin`** (부트스트랩) — 이후 로그인은 모두 `member`.
 - 세션은 httpOnly + SameSite=Lax 쿠키 (`tg_session`, HMAC 서명, 7일).
-- 로그아웃(`POST /api/auth/logout`)은 쿠키를 삭제합니다 (stateless 설계 — 재생된 토큰은 만료까지 유효).
+- 로그아웃(`POST /api/auth/logout`)은 쿠키를 삭제하고 **`users.sess_version`을 증가**시켜, 그 전에 발급된 모든 토큰(탈취·재생 포함)을 즉시 무효화합니다. 재로그인 시 새 버전으로 새 토큰이 발급됩니다.
 
 ### 권한 규칙
 
@@ -163,11 +167,20 @@ npm start          # 실행
 |---|---|---|
 | `POST` | `/api/files` | multipart(`file`, 선택 `folder_id` 필드) 업로드 → 분할 → Telegram 저장 → 메타데이터 기록. 기본 루트. 대상 폴더 `write` 필요 |
 | `GET` | `/api/files?folder_id=` | 파일 목록 (folder_id 생략 시 루트 파일). tg 식별자 미노출 |
-| `GET` | `/api/files/:id/download` | 파트 재조립 + checksum 검증 + 스트리밍 (소속 폴더 `read` 필요) |
+| `GET` | `/api/files?q=&folder_id=` | 이름 부분일치 검색 (대소문자 무시). folder_id 생략 시 읽기 가능한 전체 범위. 결과에 `folderPath: [{id,name}]` 포함 |
+| `PATCH` | `/api/files/:id` | 이동 `{folderId: string\|null}` → 갱신된 파일 객체 (소스/대상 폴더 모두 `write` 필요, 루트는 기본 허용) |
+| `GET` | `/api/files/:id/download` | 파트 재조립 + checksum 검증 + 스트리밍 (소속 폴더 `read` 필요). `CACHE_DIR` 설정 시 sha256 캐시 사용 |
 | `DELETE` | `/api/files/:id` | 논리 삭제 (`deleted_at` 설정, 소속 폴더 `write` 필요) |
 | `GET` | `/health` | 헬스 체크 |
 
+### 통계 (인증 필요)
+
+| 메서드 | 경로 | 설명 |
+|---|---|---|
+| `GET` | `/api/stats` | `{totalSize, fileCount, folderCount, userCount, folderUsage: [{folderId, name, size, fileCount}]}` — 전체 합계는 모든 인증 사용자에게 공개, `folderUsage`는 읽기 가능한 폴더만 |
+
 응답의 파일 객체: `{id, name, size, mime, folderId, ownerId, createdAt, updatedAt}`.
+검색 응답의 파일 객체: 위 필드 + `folderPath: [{id, name}, …]` (루트 파일은 빈 배열).
 
 ### curl 예시 (mock/dev 모드)
 
@@ -184,12 +197,18 @@ curl -b cookies.txt -X POST http://localhost:3000/api/folders \
 # 3) 폴더에 업로드 (folder_id 필드)
 curl -b cookies.txt -F "folder_id=1" -F "file=@/path/to/big.bin" http://localhost:3000/api/files
 
-# 4) 목록 / 다운로드 / 삭제
+# 4) 목록 / 검색 / 이동 / 다운로드 / 삭제
 curl -b cookies.txt "http://localhost:3000/api/files?folder_id=1"
+curl -b cookies.txt "http://localhost:3000/api/files?q=report"
+curl -b cookies.txt -X PATCH http://localhost:3000/api/files/1 \
+  -H 'content-type: application/json' -d '{"folderId":"2"}'
 curl -b cookies.txt -OJ http://localhost:3000/api/files/1/download
 curl -b cookies.txt -X DELETE http://localhost:3000/api/files/1
 
-# 5) 권한 부여 (userId는 /api/auth/me 또는 DB에서 확인)
+# 5) 저장소 통계
+curl -b cookies.txt http://localhost:3000/api/stats
+
+# 6) 권한 부여 (userId는 /api/auth/me 또는 DB에서 확인)
 curl -b cookies.txt -X POST http://localhost:3000/api/folders/1/permissions \
   -H 'content-type: application/json' -d '{"userId":"2","role":"write"}'
 curl -b cookies.txt -X DELETE "http://localhost:3000/api/folders/1/permissions?userId=2"
@@ -284,8 +303,8 @@ test/                 vitest 테스트
 - 업로드 실패 시 DB에는 아무것도 커밋되지 않지만, **이미 전송된 Telegram 메시지는 고아로 남습니다** (저장소 무제한 전제의 설계상 허용).
 - `file_id`는 봇 계정 종속·비영구이므로 parts에 `tg_chat_id` + `tg_message_id` + `tg_file_id`를 모두 저장합니다.
 - 텔레그램 약관상 **전용 비공개 채널** 사용을 전제로 합니다 (팀 그룹/공개 채널 금지).
-- 세션 쿠키는 Secure 플래그가 없습니다 (로컬 HTTP 개발용). HTTPS 배포 시 리버스 프록시 + 필요시 Secure 옵션 추가 필요.
-- 로그아웃은 쿠키 삭제 방식(stateless)이라, 탈취된 토큰은 만료까지 재사용될 수 있습니다 — 실전 배포 시 서버 측 세션 블록리스트 도입을 권장.
+- 세션 쿠키는 기본적으로 Secure 플래그가 없습니다 (로컬 HTTP 개발용). HTTPS 배포 시 `COOKIE_SECURE=true` + 리버스 프록시를 설정하세요 (가이드: `docs/DEPLOY.md`).
+- 로그아웃 시 `users.sess_version`이 증가하므로 이전 토큰은 즉시 무효화됩니다 (탈취·재생 방지).
 - `GET /api/folders`는 read 이상만 노출하지만, member 기본값이 read이므로 실질적으로 모든 폴더가 보입니다 (승인된 설계).
 - 웹 UI의 권한 부여 폼은 API 계약상 사용자 **id**(숫자)를 입력받습니다 (사용자 목록 엔드포인트가 없음).
   알려진 사용자 id(폴더 소유자/기존 부여분)는 패널 하단에 칩으로 표시됩니다. 사용자 이름으로 검색하려면 향후 `GET /api/users` 추가 필요.
@@ -293,4 +312,5 @@ test/                 vitest 테스트
 
 ## 다음 마일스톤 (범위 외)
 
-- M5: 캐시 계층, 동시성 점검
+- M5 진행 상황: 동시성 테스트(동시 업로드/삭제 중 다운로드/권한 변경 중 접근), 요청 로깅, 다운로드 디스크 캐시(`CACHE_DIR`), 로그인 rate limit, 서버 측 세션 무효화, 파일 검색/이동/통계 API — **구현 완료**.
+- 남은 항목: 실전(REAL) 토큰/채널 검증, HTTPS 배포(`docs/DEPLOY.md`), 파일 복사(파트 공유), 웹 UI 연결(검색/이동/통계 화면).

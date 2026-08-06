@@ -9,6 +9,8 @@ export interface FileRow {
   mime: string;
   folder_id: number | null;
   owner_id: number | null;
+  /** Full-file sha256 (upload-time), used as the download-cache key. null for legacy rows. */
+  sha256: string | null;
   deleted_at: number | null;
   created_at: number;
   updated_at: number;
@@ -34,6 +36,8 @@ export interface UserRow {
   username: string;
   display_name: string | null;
   role: UserRole;
+  /** Bumped on logout; sessions signed with an older version are rejected. */
+  sess_version: number;
   created_at: number;
 }
 
@@ -58,6 +62,8 @@ export interface NewFile {
   name: string;
   size: number;
   mime: string;
+  /** Full-file sha256 (upload-time), stored for the download cache. */
+  sha256: string;
 }
 
 export interface NewPart {
@@ -144,6 +150,12 @@ export class Db {
   private readonly db: Database.Database;
   private readonly stmtInsertFile: Database.Statement;
   private readonly stmtInsertPart: Database.Statement;
+  private readonly stmtCountActiveFiles: Database.Statement;
+  private readonly stmtCountFolders: Database.Statement;
+  private readonly stmtSearchFiles: Database.Statement;
+  private readonly stmtUpdateFileFolder: Database.Statement;
+  private readonly stmtBumpSessionVersion: Database.Statement;
+  private readonly stmtStatsByFolder: Database.Statement;
   private readonly stmtGetFile: Database.Statement;
   private readonly stmtListRootFiles: Database.Statement;
   private readonly stmtListFilesInFolder: Database.Statement;
@@ -172,7 +184,7 @@ export class Db {
     this.migrate();
 
     this.stmtInsertFile = this.db.prepare(
-      'INSERT INTO files (name, size, mime, folder_id, owner_id, deleted_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, NULL, ?, ?)',
+      'INSERT INTO files (name, size, mime, sha256, folder_id, owner_id, deleted_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)',
     );
     this.stmtInsertPart = this.db.prepare(
       'INSERT INTO parts (file_id, part_index, offset, part_size, tg_message_id, tg_chat_id, tg_file_id, checksum) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
@@ -194,6 +206,23 @@ export class Db {
       'UPDATE files SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL',
     );
     this.stmtCountParts = this.db.prepare('SELECT COUNT(*) AS n FROM parts');
+    this.stmtCountActiveFiles = this.db.prepare(
+      'SELECT COUNT(*) AS n FROM files WHERE deleted_at IS NULL',
+    );
+    this.stmtCountFolders = this.db.prepare('SELECT COUNT(*) AS n FROM folders');
+    this.stmtSearchFiles = this.db.prepare(
+      "SELECT * FROM files WHERE deleted_at IS NULL AND name LIKE ? ESCAPE '\\' ORDER BY created_at DESC, id DESC",
+    );
+    this.stmtUpdateFileFolder = this.db.prepare(
+      'UPDATE files SET folder_id = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL',
+    );
+    this.stmtBumpSessionVersion = this.db.prepare(
+      'UPDATE users SET sess_version = sess_version + 1 WHERE id = ?',
+    );
+    this.stmtStatsByFolder = this.db.prepare(
+      'SELECT folder_id, COUNT(*) AS file_count, COALESCE(SUM(size), 0) AS size FROM files WHERE deleted_at IS NULL GROUP BY folder_id',
+    );
+    this.stmtCountUsers = this.db.prepare('SELECT COUNT(*) AS n FROM users');
 
     this.stmtGetUserById = this.db.prepare('SELECT * FROM users WHERE id = ?');
     this.stmtGetUserByTelegramId = this.db.prepare('SELECT * FROM users WHERE telegram_id = ?');
@@ -230,6 +259,19 @@ export class Db {
         this.db.pragma(`user_version = ${version + 1}`);
       })();
     }
+    // Columns added after their tables were created (users.sess_version from
+    // session-revocation, files.sha256 from the download cache). Existing DBs
+    // keep their user_version but get the new columns; fresh DBs already have
+    // them via CREATE TABLE above, so the ALTER is a no-op.
+    this.ensureColumn('users', 'sess_version', 'sess_version INTEGER NOT NULL DEFAULT 0');
+    this.ensureColumn('files', 'sha256', 'sha256 TEXT');
+  }
+
+  private ensureColumn(table: string, column: string, ddl: string): void {
+    const columns = this.db.pragma(`table_info(${table})`) as Array<{ name: string }>;
+    if (!columns.some((c) => c.name === column)) {
+      this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+    }
   }
 
   close(): void {
@@ -253,6 +295,7 @@ export class Db {
         file.name,
         file.size,
         file.mime,
+        file.sha256,
         folderId,
         ownerId,
         now,
@@ -291,6 +334,21 @@ export class Db {
 
   listActiveFiles(): FileRow[] {
     return this.stmtListActiveFiles.all() as FileRow[];
+  }
+
+  /**
+   * Case-insensitive name substring search over active (non-deleted) files.
+   * The LIKE pattern is escaped so user input (%, _, \) is treated literally.
+   * Permission filtering happens in the route layer.
+   */
+  searchFiles(query: string): FileRow[] {
+    const escaped = query.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+    return this.stmtSearchFiles.all(`%${escaped}%`) as FileRow[];
+  }
+
+  /** Moves an active file to another folder (or root when folderId is null). */
+  updateFileFolder(id: number, folderId: number | null, now: number): boolean {
+    return this.stmtUpdateFileFolder.run(folderId, now, id).changes > 0;
   }
 
   getPartsForFile(fileId: number): PartRow[] {
@@ -338,6 +396,34 @@ export class Db {
 
   listUsers(): UserRow[] {
     return this.stmtListUsers.all() as UserRow[];
+  }
+
+  /** Invalidates every existing session of a user (called on logout). */
+  bumpSessionVersion(userId: number): void {
+    this.stmtBumpSessionVersion.run(userId);
+  }
+
+  // ---- stats ---------------------------------------------------------------
+
+  countUsers(): number {
+    return (this.stmtCountUsers.get() as { n: number }).n;
+  }
+
+  countFolders(): number {
+    return (this.stmtCountFolders.get() as { n: number }).n;
+  }
+
+  countActiveFiles(): number {
+    return (this.stmtCountActiveFiles.get() as { n: number }).n;
+  }
+
+  /** Active-file size/count grouped by containing folder (root = folder_id NULL). */
+  statsByFolder(): Array<{ folder_id: number | null; size: number; file_count: number }> {
+    return this.stmtStatsByFolder.all() as Array<{
+      folder_id: number | null;
+      size: number;
+      file_count: number;
+    }>;
   }
 
   // ---- folders -------------------------------------------------------------

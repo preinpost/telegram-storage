@@ -1,4 +1,5 @@
-import type { Db, PartRow } from './db.ts';
+import type { DownloadCache } from './cache.ts';
+import type { Db, FileRow, PartRow } from './db.ts';
 import { HttpError } from './errors.ts';
 import type { RateLimitQueue } from './queue.ts';
 import type { TgClient } from './tg/types.ts';
@@ -8,6 +9,8 @@ export interface DownloadServiceDeps {
   db: Db;
   tg: TgClient;
   queue: RateLimitQueue;
+  /** Optional disk cache; when set, downloads are cached by file sha256. */
+  cache?: DownloadCache | null;
 }
 
 export class ChecksumError extends Error {
@@ -38,6 +41,11 @@ export interface DownloadResult {
  * file_path URL are used only inside this module and never appear in any
  * response. The first part is fetched and verified up front so a corrupt
  * first part surfaces as a clean 500 instead of a broken stream.
+ *
+ * Cache: when `deps.cache` is set and the file has a stored full-file sha256,
+ * the download is assembled + verified once, stored under that key, and
+ * subsequent requests stream from disk without touching Telegram. The cache is
+ * opt-in (CACHE_DIR) and never skips the per-part checksum verification.
  */
 export async function openDownload(
   deps: DownloadServiceDeps,
@@ -47,6 +55,19 @@ export async function openDownload(
   if (!file || file.deleted_at !== null) throw new HttpError(404, 'file not found');
   const parts = deps.db.getPartsForFile(fileId);
   if (parts.length === 0) throw new HttpError(500, 'file has no stored parts');
+
+  if (deps.cache && file.sha256) {
+    const cached = await deps.cache.get(file.sha256);
+    if (cached !== null) {
+      return { name: file.name, mime: file.mime, size: file.size, stream: bufferToStream(cached) };
+    }
+    const assembled = await assembleAndVerify(deps, file, parts);
+    if (assembled.length !== file.size) {
+      throw new HttpError(500, 'downloaded file size mismatch');
+    }
+    await deps.cache.set(file.sha256, assembled);
+    return { name: file.name, mime: file.mime, size: file.size, stream: bufferToStream(assembled) };
+  }
 
   const first = await deps.queue.run(() => deps.tg.getFile(parts[0]!.tg_file_id));
   verifyPart(first, fileId, parts[0]!);
@@ -78,6 +99,30 @@ export async function openDownload(
   });
 
   return { name: file.name, mime: file.mime, size: file.size, stream };
+}
+
+/** Fetches every part through the queue and verifies each checksum. */
+async function assembleAndVerify(
+  deps: DownloadServiceDeps,
+  _file: FileRow,
+  parts: PartRow[],
+): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  for (const part of parts) {
+    const buf = await deps.queue.run(() => deps.tg.getFile(part.tg_file_id));
+    verifyPart(buf, _file.id, part);
+    chunks.push(buf);
+  }
+  return Buffer.concat(chunks);
+}
+
+function bufferToStream(buf: Buffer): ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(buf);
+      controller.close();
+    },
+  });
 }
 
 function verifyPart(buf: Buffer, fileId: number, part: PartRow): void {

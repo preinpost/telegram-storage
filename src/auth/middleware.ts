@@ -22,5 +22,8 @@ export function resolveAuthUser(secret: string, db: Db, c: Context<AppEnv>): Use
   if (!payload) throw new HttpError(401, 'authentication required');
   const user = db.getUserById(payload.uid);
   if (!user) throw new HttpError(401, 'authentication required');
+  // A logout bumped users.sess_version, so any token signed with an older
+  // version (including replayed stolen cookies) is now invalid.
+  if (user.sess_version !== payload.v) throw new HttpError(401, 'session revoked');
   return user;
 }

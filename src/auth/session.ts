@@ -4,9 +4,9 @@ import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
  * Stateless HMAC-signed session tokens (JWT-style, but self-contained and
  * dependency-free): base64url(JSON payload) + '.' + base64url(HMAC-SHA256).
  *
- * The payload is { uid, exp }. Logout works by clearing the httpOnly cookie —
- * a replayed token stays valid until exp (accepted trade-off for a stateless
- * design; see README).
+ * The payload is { uid, exp, v }. `v` mirrors users.sess_version at signing
+ * time: logout bumps the user's sess_version, so every previously issued
+ * token (including replayed stolen cookies) is rejected at verify time.
  */
 export const SESSION_COOKIE_NAME = 'tg_session';
 export const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -14,6 +14,8 @@ export const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 export interface SessionPayload {
   uid: number;
   exp: number;
+  /** users.sess_version at signing time (missing on legacy tokens → 0). */
+  v: number;
 }
 
 export function signSession(
@@ -21,9 +23,10 @@ export function signSession(
   uid: number,
   nowMs: number,
   ttlMs: number = SESSION_TTL_MS,
+  version: number = 0,
 ): string {
   const exp = nowMs + ttlMs;
-  const body = Buffer.from(JSON.stringify({ uid, exp }), 'utf8').toString('base64url');
+  const body = Buffer.from(JSON.stringify({ uid, exp, v: version }), 'utf8').toString('base64url');
   const sig = createHmac('sha256', secret).update(body).digest('base64url');
   return `${body}.${sig}`;
 }
@@ -46,10 +49,11 @@ export function verifySession(token: string | undefined | null, secret: string):
     return null;
   }
   if (typeof parsed !== 'object' || parsed === null) return null;
-  const { uid, exp } = parsed as { uid?: unknown; exp?: unknown };
+  const { uid, exp, v } = parsed as { uid?: unknown; exp?: unknown; v?: unknown };
   if (typeof uid !== 'number' || !Number.isInteger(uid) || typeof exp !== 'number') return null;
   if (exp <= Date.now()) return null;
-  return { uid, exp };
+  const version = typeof v === 'number' && Number.isInteger(v) ? v : 0;
+  return { uid, exp, v: version };
 }
 
 /** Ephemeral secret used when SESSION_SECRET is not configured. */

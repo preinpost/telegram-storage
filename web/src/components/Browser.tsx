@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { api, ApiError, errorMessage, uploadFile } from '../api';
+import { api, ApiError, errorMessage, isAbortError, uploadFile } from '../api';
 import { useT } from '../i18n';
 import type { FileItem, FolderNode, Permission, Role, User } from '../types';
 import FileList from './FileList';
@@ -21,6 +21,9 @@ export default function Browser({ user, onLogout }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [files, setFiles] = useState<FileItem[] | null>(null);
   const [permissions, setPermissions] = useState<Permission[] | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<FileItem[] | null>(null);
+  const [searching, setSearching] = useState(false);
 
   const reloadFolders = useCallback(async () => {
     try {
@@ -54,6 +57,45 @@ export default function Browser({ user, onLogout }: Props) {
 
   // Breadcrumb path from root to the selected folder (always includes root).
   const path = useMemo(() => findPath(folders ?? [], selectedId), [folders, selectedId]);
+
+  // Debounced name search across every folder the user may read.
+  // An empty query leaves the browser in its normal folder view.
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (q === '') {
+      setSearchResults(null);
+      setSearching(false);
+      return;
+    }
+    let cancelled = false;
+    setSearching(true);
+    const timer = window.setTimeout(() => {
+      void api
+        .files(null, q)
+        .then((res) => {
+          if (!cancelled) setSearchResults(res.files);
+        })
+        .catch(() => {
+          if (!cancelled) setSearchResults([]);
+        })
+        .finally(() => {
+          if (!cancelled) setSearching(false);
+        });
+    }, 300);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [searchQuery]);
+
+  const searchMode = searchQuery.trim() !== '';
+
+  const clearSearch = useCallback(() => setSearchQuery(''), []);
+
+  const handleOpenSearchFolder = useCallback((folderId: string | null) => {
+    setSelectedId(folderId);
+    setSearchQuery('');
+  }, []);
 
   const selectedRole: Role = selected ? selected.role : user.role === 'admin' ? 'admin' : 'write';
   const isAdmin = selectedRole === 'admin';
@@ -145,17 +187,32 @@ export default function Browser({ user, onLogout }: Props) {
   // ---- file ops ------------------------------------------------------------
 
   const handleUpload = useCallback(
-    async (file: File, onProgress: (percent: number) => void) => {
+    async (file: File, onProgress: (percent: number) => void, signal: AbortSignal) => {
       try {
-        const uploaded = await uploadFile(file, selectedId, onProgress);
+        const uploaded = await uploadFile(file, selectedId, onProgress, signal);
         toasts.push('success', t('file.uploaded', { name: uploaded.name }));
         await reloadFiles(selectedId);
       } catch (err) {
+        if (isAbortError(err)) throw err; // caller handles cancellation silently
         toasts.push('error', errorMessage(err, t('file.uploadFailed')));
         throw err;
       }
     },
-    [selectedId, reloadFiles, toasts],
+    [selectedId, reloadFiles, toasts, t],
+  );
+
+  const handleMove = useCallback(
+    async (file: FileItem, folderId: string | null) => {
+      try {
+        await api.moveFile(file.id, folderId);
+        await reloadFiles(selectedId);
+        toasts.push('success', t('move.done', { name: file.name }));
+      } catch (err) {
+        toasts.push('error', errorMessage(err, t('move.failed')));
+        throw err;
+      }
+    },
+    [selectedId, reloadFiles, toasts, t],
   );
 
   const handleDeleteFile = useCallback(
@@ -288,13 +345,35 @@ export default function Browser({ user, onLogout }: Props) {
               {selectedRole}
             </span>
           </div>
+          <div className="search-row">
+            <input
+              type="search"
+              className="search-input"
+              placeholder={t('search.placeholder')}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              aria-label={t('search.placeholder')}
+            />
+            {searchQuery !== '' && (
+              <button type="button" className="icon-btn" title={t('search.clear')} onClick={clearSearch}>
+                ✕
+              </button>
+            )}
+            {searching && <span className="search-status">{t('common.loading')}</span>}
+          </div>
           <FileList
             files={files}
             subFolders={subFolders}
+            searchMode={searchMode}
+            searching={searching}
+            searchResults={searchResults}
             onOpenFolder={setSelectedId}
+            onOpenSearchFolder={handleOpenSearchFolder}
             canWrite={canWrite}
+            folders={folders ?? []}
             onUpload={handleUpload}
             onDelete={handleDeleteFile}
+            onMove={handleMove}
           />
         </main>
 

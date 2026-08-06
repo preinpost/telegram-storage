@@ -1,4 +1,4 @@
-import type { AuthConfig, FileItem, FolderNode, Permission, Role, User } from './types';
+import type { AuthConfig, FileItem, FolderNode, Permission, Role, Stats, User } from './types';
 import { t } from './i18n';
 
 /** Error thrown for any non-2xx API response; message is the backend {error}. */
@@ -27,6 +27,11 @@ function notifyUnauthorized(): void {
 
 export function errorMessage(err: unknown, fallback: string): string {
   return err instanceof Error && err.message ? err.message : fallback;
+}
+
+/** True when an error came from an AbortController cancellation. */
+export function isAbortError(err: unknown): boolean {
+  return err instanceof DOMException && err.name === 'AbortError';
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -86,10 +91,23 @@ export const api = {
 
   deleteFolder: (id: string) => request<void>(`/api/folders/${id}`, { method: 'DELETE' }),
 
-  files: (folderId: string | null) =>
-    request<{ files: FileItem[] }>(
-      folderId === null ? '/api/files' : `/api/files?folder_id=${encodeURIComponent(folderId)}`,
-    ),
+  files: (folderId: string | null, q?: string) => {
+    const params = new URLSearchParams();
+    if (folderId !== null) params.set('folder_id', folderId);
+    const query = q?.trim();
+    if (query) params.set('q', query);
+    const qs = params.toString();
+    return request<{ files: FileItem[] }>(qs ? `/api/files?${qs}` : '/api/files');
+  },
+
+  moveFile: (id: string, folderId: string | null) =>
+    request<FileItem>(`/api/files/${id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ folderId }),
+    }),
+
+  stats: () => request<Stats>('/api/stats'),
 
   deleteFile: (id: string) => request<void>(`/api/files/${id}`, { method: 'DELETE' }),
 
@@ -112,24 +130,35 @@ export const api = {
 /**
  * Multipart upload with progress. XHR (not fetch) because fetch has no upload
  * progress events. The httpOnly session cookie is sent via withCredentials.
+ * Pass an optional AbortSignal to cancel an in-flight upload.
  */
 export function uploadFile(
   file: File,
   folderId: string | null,
   onProgress: (percent: number) => void,
+  signal?: AbortSignal,
 ): Promise<FileItem> {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException('Upload aborted', 'AbortError'));
+      return;
+    }
     const fd = new FormData();
     if (folderId !== null) fd.append('folder_id', folderId);
     fd.append('file', file);
 
     const xhr = new XMLHttpRequest();
+    const onAbort = () => xhr.abort();
+    signal?.addEventListener('abort', onAbort, { once: true });
+    const detach = () => signal?.removeEventListener('abort', onAbort);
+
     xhr.open('POST', '/api/files');
     xhr.withCredentials = true;
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
     };
     xhr.onload = () => {
+      detach();
       if (xhr.status === 401) notifyUnauthorized();
       let body: { error?: unknown } = {};
       try {
@@ -145,7 +174,14 @@ export function uploadFile(
         reject(new ApiError(xhr.status, message));
       }
     };
-    xhr.onerror = () => reject(new ApiError(0, t('file.uploadNetworkError')));
+    xhr.onerror = () => {
+      detach();
+      reject(new ApiError(0, t('file.uploadNetworkError')));
+    };
+    xhr.onabort = () => {
+      detach();
+      reject(new DOMException('Upload aborted', 'AbortError'));
+    };
     xhr.send(fd);
   });
 }

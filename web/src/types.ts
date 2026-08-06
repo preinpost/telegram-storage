@@ -37,6 +37,8 @@ export interface FileItem {
   ownerId: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Present on search results — root→folder path ([] for root files). */
+  folderPath?: Array<{ id: string; name: string }>;
 }
 
 export interface Permission {
@@ -45,6 +47,22 @@ export interface Permission {
   folderId: string;
   role: Role;
   createdAt: string;
+}
+
+export interface FolderUsage {
+  folderId: string | null;
+  name: string;
+  size: number;
+  fileCount: number;
+}
+
+/** GET /api/stats — storage usage overview. */
+export interface Stats {
+  totalSize: number;
+  fileCount: number;
+  folderCount: number;
+  userCount: number;
+  folderUsage: FolderUsage[];
 }
 
 export const ROLE_RANK: Record<Role, number> = { read: 1, write: 2, admin: 3 };

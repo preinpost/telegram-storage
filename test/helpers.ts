@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp } from '../src/app.ts';
 import type { AppDeps } from '../src/app.ts';
+import { DiskCache } from '../src/cache.ts';
 import { Db } from '../src/db.ts';
 import { RateLimitQueue } from '../src/queue.ts';
 import { MockTgClient } from '../src/tg/mock.ts';
@@ -52,6 +53,14 @@ export interface StartHarnessOptions {
   botUsername?: string | null;
   /** Session signing secret. Default: a fixed test secret. */
   sessionSecret?: string;
+  /** Login rate limit per minute (0 disables). Default 10. */
+  rateLimitPerMinute?: number;
+  /** Enable the download disk cache under this temp subdirectory. */
+  cacheDir?: string;
+  /** Cache size cap in bytes (default 256 MiB). */
+  cacheMaxBytes?: number;
+  /** Add the Secure flag to session cookies. */
+  cookieSecure?: boolean;
 }
 
 /**
@@ -85,6 +94,11 @@ export async function startHarness(options: StartHarnessOptions = {}): Promise<T
     botUsername: options.botUsername ?? null,
     devAuth,
     sessionSecret: options.sessionSecret ?? 'test-session-secret',
+    rateLimitPerMinute: options.rateLimitPerMinute ?? 10,
+    cookieSecure: options.cookieSecure ?? false,
+    cache: options.cacheDir
+      ? new DiskCache(join(tmp, options.cacheDir), options.cacheMaxBytes ?? 256 * 1024 * 1024)
+      : null,
   };
   const app = createApp(deps);
   const server = serve({ fetch: app.fetch, port: 0 });
