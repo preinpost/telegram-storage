@@ -3,11 +3,12 @@ import { api, ApiError, errorMessage, isAbortError, uploadFile } from '../api';
 import { cn } from '../cn';
 import { useT } from '../i18n';
 import { btn, btnSmall, iconBtn, roleBadge, roleBadgeAdmin } from '../ui';
-import type { FileItem, FolderNode, Permission, Role, User } from '../types';
+import type { FileItem, FolderNode, Permission, Role, User, UserAdmin } from '../types';
 import FileList from './FileList';
 import FolderTree from './FolderTree';
 import PermissionsPanel from './PermissionsPanel';
 import SettingsModal from './SettingsModal';
+import UserManagementModal from './UserManagementModal';
 import { useToasts } from './Toasts';
 
 interface Props {
@@ -19,6 +20,9 @@ export default function Browser({ user, onLogout }: Props) {
   const t = useT();
   const toasts = useToasts();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [usersOpen, setUsersOpen] = useState(false);
+  const [users, setUsers] = useState<UserAdmin[]>([]);
+  const isGlobalAdmin = user.role === 'admin';
   const [folders, setFolders] = useState<FolderNode[] | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [files, setFiles] = useState<FileItem[] | null>(null);
@@ -40,6 +44,28 @@ export default function Browser({ user, onLogout }: Props) {
   useEffect(() => {
     void reloadFolders();
   }, [reloadFolders]);
+
+  // Global user list for admins (used by the user-management modal and to
+  // resolve usernames in the permission panel). Best-effort — failure leaves
+  // the permission panel on its numeric-id fallback.
+  useEffect(() => {
+    if (!isGlobalAdmin) {
+      setUsers([]);
+      return;
+    }
+    let cancelled = false;
+    void api
+      .users()
+      .then((res) => {
+        if (!cancelled) setUsers(res.users);
+      })
+      .catch(() => {
+        if (!cancelled) setUsers([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isGlobalAdmin]);
 
   const selected = useMemo(
     () => (selectedId === null ? null : findFolder(folders ?? [], selectedId)),
@@ -278,13 +304,23 @@ export default function Browser({ user, onLogout }: Props) {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-center justify-between border-b border-border bg-panel px-4 py-2.5">
-        <div className="text-base font-bold">📁 Telegram Storage</div>
-        <div className="flex items-center gap-2">
-          <span className="font-semibold" title={`@${user.username}`}>
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-panel px-3 py-2.5 sm:px-4">
+        <div className="min-w-0 truncate text-base font-bold">📁 Telegram Storage</div>
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="max-w-[10rem] truncate font-semibold" title={`@${user.username}`}>
             {user.displayName || user.username}
           </span>
           <span className={cn(roleBadge, user.role === 'admin' && roleBadgeAdmin)}>{user.role}</span>
+          {isGlobalAdmin && (
+            <button
+              type="button"
+              className={`${btn} ${btnSmall}`}
+              title={t('users.openTitle')}
+              onClick={() => setUsersOpen(true)}
+            >
+              👥 {t('users.title')}
+            </button>
+          )}
           <button type="button" className={`${btn} ${btnSmall}`} onClick={() => void onLogout()}>
             {t('common.logout')}
           </button>
@@ -300,9 +336,10 @@ export default function Browser({ user, onLogout }: Props) {
       </header>
 
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <UserManagementModal open={usersOpen} onClose={() => setUsersOpen(false)} />
 
-      <div className="grid min-h-0 flex-1 grid-cols-[280px_minmax(0,1fr)_auto] gap-3 p-3">
-        <aside className="min-w-[240px] overflow-auto rounded-lg border border-border bg-panel shadow-card">
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 p-2 sm:p-3 md:grid-cols-[220px_minmax(0,1fr)] xl:grid-cols-[240px_minmax(0,1fr)_auto]">
+        <aside className="min-w-0 overflow-auto rounded-lg border border-border bg-panel shadow-card">
           <FolderTree
             nodes={folders ?? []}
             selectedId={selectedId}
@@ -314,9 +351,9 @@ export default function Browser({ user, onLogout }: Props) {
           />
         </aside>
 
-        <main className="flex min-w-0 flex-col overflow-auto rounded-lg border border-border bg-panel p-3 shadow-card">
-          <div className="mb-2.5 flex items-center gap-2 border-b border-border pb-2.5">
-            <nav className="flex min-w-0 flex-wrap items-center gap-0.5" aria-label={t('browser.breadcrumbAria')}>
+        <main className="flex min-w-0 flex-col overflow-auto rounded-lg border border-border bg-panel p-2 shadow-card sm:p-3">
+          <div className="mb-2.5 flex flex-wrap items-center gap-2 border-b border-border pb-2.5">
+            <nav className="flex min-w-0 flex-1 flex-wrap items-center gap-0.5" aria-label={t('browser.breadcrumbAria')}>
               {path.map((seg, i) => {
                 const isLast = i === path.length - 1;
                 // The root crumb is translated at render time so it follows
@@ -344,7 +381,7 @@ export default function Browser({ user, onLogout }: Props) {
               })}
             </nav>
             <span className={cn(roleBadge, selectedRole === 'admin' && roleBadgeAdmin)}>
-              {selectedRole}
+              {t(`role.${selectedRole}`)}
             </span>
           </div>
           <div className="mb-2.5 flex items-center gap-1.5">
@@ -385,6 +422,7 @@ export default function Browser({ user, onLogout }: Props) {
             ownerId={selected.ownerId}
             permissions={permissions}
             knownUserIds={knownUserIds}
+            users={users}
             onGrant={handleGrant}
             onRevoke={handleRevoke}
             onRetry={() => void reloadPermissions(selectedId)}

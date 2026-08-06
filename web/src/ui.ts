@@ -11,13 +11,14 @@ export const btn =
   'inline-flex items-center gap-1 rounded-lg border border-border bg-panel px-3 py-1.5 text-sm whitespace-nowrap cursor-pointer hover:border-[#b9c4cf] disabled:opacity-55 disabled:cursor-not-allowed';
 
 /** Primary button variant (old `.btn-primary`). */
-export const btnPrimary = 'border-accent bg-accent text-white hover:border-accent-dark hover:bg-accent-dark';
+export const btnPrimary =
+  '!border-accent !bg-accent !text-white hover:!border-accent-dark hover:!bg-accent-dark';
 
 /** Small button size (old `.btn-small`). */
-export const btnSmall = 'rounded-md px-2 py-0.5 text-xs';
+export const btnSmall = '!rounded-md !px-2 !py-0.5 text-xs';
 
 /** Danger button variant (old `.btn.danger`). */
-export const btnDanger = 'border-danger-line bg-danger-bg text-danger';
+export const btnDanger = '!border-danger-line !bg-danger-bg !text-danger';
 
 /** Ghost icon button (old `.icon-btn`). */
 export const iconBtn =
@@ -31,7 +32,7 @@ export const roleBadge =
   'inline-block rounded-full border border-info-line bg-info-bg px-[7px] py-px text-[11px] text-accent-dark';
 
 /** Admin variant of the role badge (old `.role-badge.admin`). */
-export const roleBadgeAdmin = 'border-warn-line bg-warn-bg text-warn-strong';
+export const roleBadgeAdmin = '!border-warn-line !bg-warn-bg !text-warn-strong';
 
 /** Clickable chip (old `.chip`). */
 export const chip =

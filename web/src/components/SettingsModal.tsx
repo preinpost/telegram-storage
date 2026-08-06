@@ -64,7 +64,7 @@ export default function SettingsModal({ open, onClose }: Props) {
                     aria-checked={lang === l}
                     className={cn(
                       'flex-1 cursor-pointer rounded-lg border border-border bg-white px-2.5 py-2 text-[13px] hover:border-accent',
-                      lang === l && 'border-accent bg-accent text-white',
+                      lang === l && '!border-accent !bg-accent !text-white',
                     )}
                     onClick={() => setLang(l)}
                   >

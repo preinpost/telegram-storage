@@ -28,15 +28,9 @@ tasks:
       - npm --prefix web run dev
 
   dev:all:
-    desc: "API + 웹 동시 실행 (로그: tmp/api.log, tmp/web.log)"
+    desc: API + 웹 동시 실행 (현재 터미널에서 직접 실행)
     cmds:
-      - cmd: mkdir -p tmp
-      - cmd: nohup npm run dev > tmp/api.log 2>&1 &
-        silent: true
-      - cmd: nohup npm --prefix web run dev > tmp/web.log 2>&1 &
-        silent: true
-      - cmd: 'sleep 3 && echo "API:  http://localhost:3000  (log: tmp/api.log)" && echo "WEB:  http://localhost:5173  (log: tmp/web.log)" && echo "종료: task stop"'
-        silent: true
+      - task --parallel dev dev:web
 
   stop:
     desc: 실행 중인 API/웹 서버 모두 종료 (포트 3000, 5173)
@@ -48,6 +42,16 @@ tasks:
           done
       - cmd: pkill -f "tsx watch src/index.ts" 2>/dev/null; pkill -f "web/node_modules/.bin/vite" 2>/dev/null; true
         silent: true
+
+  local:clean:
+    desc: 로컬 개발 데이터 초기화 (DB, mock Telegram 파일, 스모크 DB)
+    cmds:
+      - task stop
+      - cmd: |
+          rm -f data/telegram-storage.db data/telegram-storage.db-wal data/telegram-storage.db-shm
+          rm -f tmp/smoke.db tmp/smoke.db-wal tmp/smoke.db-shm
+          rm -rf tmp/mock-tg tmp/cache
+          echo "로컬 개발 데이터가 초기화되었습니다. 다음 로그인 사용자가 admin이 됩니다."
 
   # ── 프로덕션 실행 ─────────────────────────────────────
   start:

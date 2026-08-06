@@ -83,7 +83,7 @@ export default function MoveModal({ file, folders, onClose, onMove }: Props) {
                   type="button"
                   className={cn(
                     'flex w-full cursor-pointer items-center gap-1.5 border-0 bg-white px-2.5 py-[7px] text-left text-[13px] hover:bg-info-bg',
-                    target === null && 'bg-info-bg font-semibold text-accent-dark',
+                      target === null && '!bg-info-bg font-semibold text-accent-dark',
                   )}
                   onClick={() => setTarget(null)}
                 >
@@ -96,7 +96,7 @@ export default function MoveModal({ file, folders, onClose, onMove }: Props) {
                     type="button"
                     className={cn(
                       'flex w-full cursor-pointer items-center gap-1.5 border-0 bg-white px-2.5 py-[7px] text-left text-[13px] hover:bg-info-bg',
-                      target === f.id && 'bg-info-bg font-semibold text-accent-dark',
+                      target === f.id && '!bg-info-bg font-semibold text-accent-dark',
                     )}
                     style={{ paddingLeft: 10 + f.depth * 18 }}
                     onClick={() => setTarget(f.id)}

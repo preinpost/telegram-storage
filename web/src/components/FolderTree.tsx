@@ -88,7 +88,7 @@ export default function FolderTree({
     createParent === undefined ? '' : createParent === null ? t('common.root') : nodeName(nodes, createParent) ?? '?';
 
   return (
-    <div className="min-w-[240px] p-2.5">
+    <div className="min-w-0 p-2.5">
       <div className="mb-2 flex items-center justify-between">
         <span className="font-bold">{t('folder.title')}</span>
         {canCreate && (
@@ -177,7 +177,7 @@ export default function FolderTree({
                 📁 {node.name}
               </span>
               <span className={roleBadge} title={t('folder.roleTitle', { role: t(`role.${node.role}`) })}>
-                {node.role}
+                {t(`role.${node.role}`)}
               </span>
               {canWrite && (
                 <button type="button" className={iconBtn} title={t('folder.createChildTitle')} onClick={() => openCreate(node.id)}>

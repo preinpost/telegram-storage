@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { cn } from '../cn';
 import { useT } from '../i18n';
 import { btn, btnDanger, btnPrimary, btnSmall, chip, input, roleBadge, roleBadgeAdmin } from '../ui';
-import type { Permission, Role } from '../types';
+import type { Permission, Role, UserAdmin } from '../types';
 import { useToasts } from './Toasts';
 
 const ROLES: Role[] = ['read', 'write', 'admin'];
@@ -12,46 +12,61 @@ interface Props {
   ownerId: string;
   permissions: Permission[] | null;
   knownUserIds: string[];
+  /** Global user list (admin-scoped); empty when the caller isn't a global admin. */
+  users?: UserAdmin[];
   onGrant: (userId: string, role: Role) => void | Promise<void>;
   onRevoke: (userId: string) => void | Promise<void>;
   onRetry: () => void;
 }
 
 /**
- * Permission management for the selected folder (only reachable by admins —
+ * Folder-scoped permission management (only reachable by admins on the folder —
  * the backend enforces the admin gate regardless of the UI).
  *
- * Note: the M3 API contract exposes only user *ids* (no /api/users endpoint),
- * so members are shown as "User #id" and a new grant needs the target user's
- * numeric id (e.g. from /api/auth/me of that user, or the known-id chips
- * collected from folder owners / existing grants).
+ * When a global user list is available (global admin), members are picked by
+ * name from a dropdown and existing grants show their username. Otherwise it
+ * falls back to numeric user-id entry.
  */
 export default function PermissionsPanel({
   folderName,
   ownerId,
   permissions,
   knownUserIds,
+  users = [],
   onGrant,
   onRevoke,
   onRetry,
 }: Props) {
   const t = useT();
   const toasts = useToasts();
-  const [userId, setUserId] = useState('');
+  const [userId, setUserId] = useState(''); // picked user id (dropdown)
+  const [manualId, setManualId] = useState(''); // fallback numeric id
   const [role, setRole] = useState<Role>('read');
   const [busy, setBusy] = useState(false);
 
+  const userById = new Map(users.map((u) => [u.id, u]));
+  const userName = (id: string): string => {
+    const u = userById.get(id);
+    return u ? u.displayName || u.username : `User #${id}`;
+  };
+  const canPickByName = users.length > 0;
+  const targetId = canPickByName ? userId : manualId.trim();
+
   const submitGrant = async (e: FormEvent) => {
     e.preventDefault();
-    const id = userId.trim();
-    if (!/^\d+$/.test(id)) {
+    if (!targetId) {
+      toasts.push('error', t('perm.selectUserPrompt'));
+      return;
+    }
+    if (!canPickByName && !/^\d+$/.test(targetId)) {
       toasts.push('error', t('perm.userIdNumeric'));
       return;
     }
     setBusy(true);
     try {
-      await onGrant(id, role);
+      await onGrant(targetId, role);
       setUserId('');
+      setManualId('');
     } finally {
       setBusy(false);
     }
@@ -74,31 +89,67 @@ export default function PermissionsPanel({
       </div>
 
       <form className="flex flex-col gap-1.5" onSubmit={submitGrant}>
-        <div className="flex items-center gap-1.5">
-          <input
-            className={`${input} min-w-0 flex-1`}
-            value={userId}
-            onChange={(e) => setUserId(e.target.value)}
-            placeholder={t('perm.userIdPlaceholder')}
-            inputMode="numeric"
-            maxLength={12}
-          />
-          <select className="rounded-lg border border-border bg-white px-1.5 py-[7px] text-xs" value={role} onChange={(e) => setRole(e.target.value as Role)}>
-            {ROLES.map((r) => (
-              <option key={r} value={r}>
-                {t(`role.${r}`)}
-              </option>
-            ))}
-          </select>
-          <button type="submit" className={`${btn} ${btnSmall} ${btnPrimary}`} disabled={busy || !userId.trim()}>
-            {t('perm.grant')}
-          </button>
-        </div>
+        {canPickByName ? (
+          <div className="flex items-center gap-1.5">
+            <select
+              className={`${input} min-w-0 flex-1`}
+              value={userId}
+              onChange={(e) => setUserId(e.target.value)}
+              aria-label={t('perm.selectUser')}
+            >
+              <option value="">{t('perm.selectUser')}</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.displayName ? `${u.displayName} (@${u.username})` : `@${u.username}`}
+                </option>
+              ))}
+            </select>
+            <select
+              className="rounded-lg border border-border bg-white px-1.5 py-[7px] text-xs"
+              value={role}
+              onChange={(e) => setRole(e.target.value as Role)}
+            >
+              {ROLES.map((r) => (
+                <option key={r} value={r}>
+                  {t(`role.${r}`)}
+                </option>
+              ))}
+            </select>
+            <button type="submit" className={`${btn} ${btnSmall} ${btnPrimary}`} disabled={busy || !targetId}>
+              {t('perm.grant')}
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5">
+            <input
+              className={`${input} min-w-0 flex-1`}
+              value={manualId}
+              onChange={(e) => setManualId(e.target.value)}
+              placeholder={t('perm.userIdPlaceholder')}
+              inputMode="numeric"
+              maxLength={12}
+            />
+            <select
+              className="rounded-lg border border-border bg-white px-1.5 py-[7px] text-xs"
+              value={role}
+              onChange={(e) => setRole(e.target.value as Role)}
+            >
+              {ROLES.map((r) => (
+                <option key={r} value={r}>
+                  {t(`role.${r}`)}
+                </option>
+              ))}
+            </select>
+            <button type="submit" className={`${btn} ${btnSmall} ${btnPrimary}`} disabled={busy || !targetId}>
+              {t('perm.grant')}
+            </button>
+          </div>
+        )}
       </form>
 
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center gap-1.5 rounded-lg border border-warn-line bg-warn-bg px-2 py-1.5" title={t('perm.ownerTitle')}>
-          <span>User #{ownerId}</span>
+          <span className="flex-1 truncate font-semibold">{userName(ownerId)}</span>
           <span className={cn(roleBadge, roleBadgeAdmin)}>{t('perm.owner')}</span>
         </div>
 
@@ -114,7 +165,9 @@ export default function PermissionsPanel({
         {permissions !== null &&
           permissions.map((p) => (
             <div key={p.id} className="flex items-center gap-1.5 rounded-lg border border-border bg-row-alt px-2 py-1.5">
-              <span className="flex-1 truncate font-semibold">User #{p.userId}</span>
+              <span className="flex-1 truncate font-semibold" title={`User #${p.userId}`}>
+                {userName(p.userId)}
+              </span>
               <select
                 className="rounded-lg border border-border bg-white px-1.5 py-0.5 text-xs"
                 value={p.role}
@@ -147,9 +200,9 @@ export default function PermissionsPanel({
               type="button"
               className={chip}
               title={t('perm.knownUsersTitle')}
-              onClick={() => setUserId(id)}
+              onClick={() => (canPickByName ? setUserId(id) : setManualId(id))}
             >
-              User #{id}
+              {userName(id)}
             </button>
           ))}
         </div>

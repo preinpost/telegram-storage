@@ -169,6 +169,7 @@ export class Db {
   private readonly stmtCreateUser: Database.Statement;
   private readonly stmtCountUsers: Database.Statement;
   private readonly stmtListUsers: Database.Statement;
+  private readonly stmtUpdateUserRole: Database.Statement;
   private readonly stmtGetFolder: Database.Statement;
   private readonly stmtListFolders: Database.Statement;
   private readonly stmtFindFolderByNameAndParent: Database.Statement;
@@ -232,6 +233,7 @@ export class Db {
     );
     this.stmtCountUsers = this.db.prepare('SELECT COUNT(*) AS n FROM users');
     this.stmtListUsers = this.db.prepare('SELECT * FROM users ORDER BY id ASC');
+    this.stmtUpdateUserRole = this.db.prepare('UPDATE users SET role = ? WHERE id = ?');
 
     this.stmtGetFolder = this.db.prepare('SELECT * FROM folders WHERE id = ?');
     this.stmtListFolders = this.db.prepare('SELECT * FROM folders ORDER BY id ASC');
@@ -396,6 +398,11 @@ export class Db {
 
   listUsers(): UserRow[] {
     return this.stmtListUsers.all() as UserRow[];
+  }
+
+  /** Updates a user's global role ('admin' | 'member'). Returns true if a row changed. */
+  updateUserRole(id: number, role: UserRole): boolean {
+    return this.stmtUpdateUserRole.run(role, id).changes > 0;
   }
 
   /** Invalidates every existing session of a user (called on logout). */

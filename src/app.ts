@@ -10,6 +10,7 @@ import { authRoutes } from './routes/auth.ts';
 import { filesRoutes } from './routes/files.ts';
 import { foldersRoutes } from './routes/folders.ts';
 import { statsRoutes } from './routes/stats.ts';
+import { usersRoutes } from './routes/users.ts';
 import type { TgClient } from './tg/types.ts';
 
 export interface AppDeps {
@@ -67,6 +68,7 @@ export function createApp(deps: AppDeps): Hono<AppEnv> {
   app.route('/api/folders', foldersRoutes(deps, sessionSecret));
   app.route('/api/files', filesRoutes(deps, sessionSecret));
   app.route('/api/stats', statsRoutes(deps, sessionSecret));
+  app.route('/api/users', usersRoutes(deps, sessionSecret));
 
   return app;
 }

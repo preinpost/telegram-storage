@@ -1,4 +1,14 @@
-import type { AuthConfig, FileItem, FolderNode, Permission, Role, Stats, User } from './types';
+import type {
+  AuthConfig,
+  FileItem,
+  FolderNode,
+  Permission,
+  Role,
+  Stats,
+  User,
+  UserAdmin,
+  UserRole,
+} from './types';
 import { t } from './i18n';
 
 /** Error thrown for any non-2xx API response; message is the backend {error}. */
@@ -108,6 +118,15 @@ export const api = {
     }),
 
   stats: () => request<Stats>('/api/stats'),
+
+  users: () => request<{ users: UserAdmin[] }>('/api/users'),
+
+  updateUserRole: (id: string, role: UserRole) =>
+    request<{ user: UserAdmin }>(`/api/users/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ role }),
+    }),
 
   deleteFile: (id: string) => request<void>(`/api/files/${id}`, { method: 'DELETE' }),
 

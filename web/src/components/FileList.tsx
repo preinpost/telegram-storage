@@ -254,7 +254,9 @@ export default function FileList({
               <span className="flex-1 truncate font-semibold" title={f.name}>
                 {f.name}
               </span>
-              <span className={cn(roleBadge, f.role === 'admin' && roleBadgeAdmin)}>{f.role}</span>
+              <span className={cn(roleBadge, f.role === 'admin' && roleBadgeAdmin)}>
+                {t(`role.${f.role}`)}
+              </span>
             </button>
           ))}
         </div>
@@ -267,13 +269,13 @@ export default function FileList({
       )}
 
       {rows !== null && rows.length > 0 && (
-        <table className="w-full table-fixed border-collapse">
+        <table className="w-full min-w-0 table-fixed border-collapse">
           <thead>
             <tr>
               <th className="border-b border-border px-2 py-1.5 text-left text-xs font-semibold text-muted">{t('file.nameCol')}</th>
-              <th className="w-[90px] border-b border-border px-2 py-1.5 text-left text-xs font-semibold text-muted">{t('file.sizeCol')}</th>
-              <th className="w-[160px] border-b border-border px-2 py-1.5 text-left text-xs font-semibold text-muted">{t('file.dateCol')}</th>
-              <th className="w-[170px] whitespace-nowrap border-b border-border px-2 py-1.5 text-right text-xs font-semibold text-muted">{t('file.actionsCol')}</th>
+              <th className="hidden w-[90px] border-b border-border px-2 py-1.5 text-left text-xs font-semibold text-muted sm:table-cell">{t('file.sizeCol')}</th>
+              <th className="hidden w-[160px] border-b border-border px-2 py-1.5 text-left text-xs font-semibold text-muted md:table-cell">{t('file.dateCol')}</th>
+              <th className="w-[205px] min-w-[205px] border-b border-border px-2 py-1.5 text-right text-xs font-semibold text-muted">{t('file.actionsCol')}</th>
             </tr>
           </thead>
           <tbody>
@@ -308,34 +310,28 @@ export default function FileList({
                     </span>
                   )}
                 </td>
-                <td className="border-b border-[#eef2f5] px-2 py-[7px] align-middle">{formatBytes(f.size)}</td>
-                <td className="border-b border-[#eef2f5] px-2 py-[7px] align-middle">{formatDate(f.updatedAt, langToLocale(lang))}</td>
-                <td className="whitespace-nowrap border-b border-[#eef2f5] px-2 py-[7px] text-right align-middle">
-                  <a
-                    className={`${btn} ${btnSmall}`}
-                    href={`/api/files/${f.id}/download`}
-                    title={t('file.downloadTitle')}
-                  >
-                    {t('file.download')}
-                  </a>
-                  {canWrite && !searchMode && (
-                    <>
-                      <button
-                        type="button"
-                        className={`${btn} ${btnSmall} ml-1`}
-                        onClick={() => setMoveTarget(f)}
-                      >
-                        {t('file.move')}
-                      </button>
-                      <button
-                        type="button"
-                        className={`${btn} ${btnSmall} ${btnDanger} ml-1`}
-                        onClick={() => confirmDelete(f)}
-                      >
-                        🗑 {t('common.delete')}
-                      </button>
-                    </>
-                  )}
+                <td className="hidden border-b border-[#eef2f5] px-2 py-[7px] align-middle sm:table-cell">{formatBytes(f.size)}</td>
+                <td className="hidden border-b border-[#eef2f5] px-2 py-[7px] align-middle md:table-cell">{formatDate(f.updatedAt, langToLocale(lang))}</td>
+                <td className="w-[205px] min-w-[205px] border-b border-[#eef2f5] px-2 py-[7px] text-right align-middle">
+                  <div className="flex flex-nowrap justify-end gap-1 whitespace-nowrap">
+                    <a
+                      className={`${btn} ${btnSmall}`}
+                      href={`/api/files/${f.id}/download`}
+                      title={t('file.downloadTitle')}
+                    >
+                      {t('file.download')}
+                    </a>
+                    {canWrite && !searchMode && (
+                      <>
+                        <button type="button" className={`${btn} ${btnSmall}`} onClick={() => setMoveTarget(f)}>
+                          {t('file.move')}
+                        </button>
+                        <button type="button" className={`${btn} ${btnSmall} ${btnDanger}`} onClick={() => confirmDelete(f)}>
+                          🗑 {t('common.delete')}
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}

@@ -12,6 +12,16 @@ export interface User {
   createdAt: string;
 }
 
+/** Global user (GET /api/users) — mirrors the backend UserRow, admin-scoped. */
+export interface UserAdmin {
+  id: string;
+  username: string;
+  displayName: string | null;
+  role: UserRole;
+  telegramId: string | null;
+  createdAt: string;
+}
+
 /** GET /api/auth/config (public). */
 export interface AuthConfig {
   devAuth: boolean;
