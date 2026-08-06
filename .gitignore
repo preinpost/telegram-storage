@@ -1,0 +1,12 @@
+node_modules/
+.env
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+dist/
+tmp/
+data/
+coverage/
+.pnpm-store/
+.pi-subagents/
