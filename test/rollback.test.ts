@@ -35,8 +35,8 @@ describe('upload failure rollback', () => {
     expect(body.error).toContain('simulated telegram outage');
 
     // Rollback: no files row, no parts rows.
-    expect(h.db.listActiveFiles()).toHaveLength(0);
-    expect(h.db.countParts()).toBe(0);
+    expect(await h.db.listActiveFiles()).toHaveLength(0);
+    expect(await h.db.countParts()).toBe(0);
 
     // The 1 chunk that was already sent to Telegram stays there (orphan) —
     // inherent to the store-in-Telegram-first design; only DB state is atomic.
@@ -53,8 +53,8 @@ describe('upload failure rollback', () => {
       body: formData(randomBuffer(SIZE), 'fail-first.bin'),
     });
     expect(res.status).toBe(500);
-    expect(h.db.listActiveFiles()).toHaveLength(0);
-    expect(h.db.countParts()).toBe(0);
+    expect(await h.db.listActiveFiles()).toHaveLength(0);
+    expect(await h.db.countParts()).toBe(0);
     expect(h.tg.stored.size).toBe(0);
   });
 });

@@ -11,16 +11,16 @@ import { SESSION_COOKIE_NAME, verifySession } from './session.ts';
  */
 export function requireAuth(secret: string, db: Db): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
-    c.set('user', resolveAuthUser(secret, db, c));
+    c.set('user', await resolveAuthUser(secret, db, c));
     await next();
   };
 }
 
-export function resolveAuthUser(secret: string, db: Db, c: Context<AppEnv>): UserRow {
+export async function resolveAuthUser(secret: string, db: Db, c: Context<AppEnv>): Promise<UserRow> {
   const token = getCookie(c, SESSION_COOKIE_NAME);
   const payload = verifySession(token, secret);
   if (!payload) throw new HttpError(401, 'authentication required');
-  const user = db.getUserById(payload.uid);
+  const user = await db.getUserById(payload.uid);
   if (!user) throw new HttpError(401, 'authentication required');
   // A logout bumped users.sess_version, so any token signed with an older
   // version (including replayed stolen cookies) is now invalid.

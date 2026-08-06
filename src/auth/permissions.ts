@@ -17,19 +17,23 @@ export function rankOf(role: string): number {
  * Plus two unconditional overrides: global admins (users.role='admin') and the
  * folder owner are always 'admin'.
  */
-export function resolveFolderRole(db: Db, userId: number, folderId: number): Role {
-  const user = db.getUserById(userId);
+export async function resolveFolderRole(
+  db: Db,
+  userId: number,
+  folderId: number,
+): Promise<Role> {
+  const user = await db.getUserById(userId);
   if (!user) throw new HttpError(401, 'user not found');
   if (user.role === 'admin') return 'admin';
-  const folder = db.getFolder(folderId);
+  const folder = await db.getFolder(folderId);
   if (!folder) throw new HttpError(404, 'folder not found');
   if (folder.owner_id === userId) return 'admin';
 
   let cursor: number | null = folder.id;
   for (let hop = 0; hop < 1000 && cursor !== null; hop++) {
-    const permission = db.getPermission('user', userId, cursor);
+    const permission = await db.getPermission('user', userId, cursor);
     if (permission) return permission.role;
-    const current = db.getFolder(cursor);
+    const current = await db.getFolder(cursor);
     cursor = current?.parent_id ?? null;
   }
   return 'read';
@@ -40,22 +44,31 @@ export function resolveFolderRole(db: Db, userId: number, folderId: number): Rol
  * root rule: members default to 'write' (anyone may create folders at the
  * root), admins are 'admin'.
  */
-export function resolveFileRole(db: Db, user: UserRow, folderId: number | null): Role {
+export async function resolveFileRole(
+  db: Db,
+  user: UserRow,
+  folderId: number | null,
+): Promise<Role> {
   if (folderId === null) return user.role === 'admin' ? 'admin' : 'write';
   return resolveFolderRole(db, user.id, folderId);
 }
 
 /** Throws 403 unless the user's effective role on the folder is >= minimum. */
-export function requireRole(db: Db, userId: number, folderId: number, minimum: Role): Role {
-  const role = resolveFolderRole(db, userId, folderId);
+export async function requireRole(
+  db: Db,
+  userId: number,
+  folderId: number,
+  minimum: Role,
+): Promise<Role> {
+  const role = await resolveFolderRole(db, userId, folderId);
   if (rankOf(role) < rankOf(minimum)) {
     throw new HttpError(403, `requires ${minimum} permission on this folder`);
   }
   return role;
 }
 
-export function isAdminOn(db: Db, userId: number, folderId: number): boolean {
-  return rankOf(resolveFolderRole(db, userId, folderId)) >= rankOf('admin');
+export async function isAdminOn(db: Db, userId: number, folderId: number): Promise<boolean> {
+  return rankOf(await resolveFolderRole(db, userId, folderId)) >= rankOf('admin');
 }
 
 /**
@@ -63,22 +76,22 @@ export function isAdminOn(db: Db, userId: number, folderId: number): boolean {
  * admins, direct admin grants, and admin grants inherited from ancestors.
  * Used for the "keep at least one admin" guard on permission changes.
  */
-export function folderAdminUserIds(db: Db, folderId: number): number[] {
+export async function folderAdminUserIds(db: Db, folderId: number): Promise<number[]> {
   const admins = new Set<number>();
-  const folder = db.getFolder(folderId);
+  const folder = await db.getFolder(folderId);
   if (!folder) return [];
   admins.add(folder.owner_id);
-  for (const user of db.listUsers()) {
+  for (const user of await db.listUsers()) {
     if (user.role === 'admin') admins.add(user.id);
   }
   let cursor: number | null = folder.id;
   for (let hop = 0; hop < 1000 && cursor !== null; hop++) {
-    for (const permission of db.listPermissions(cursor)) {
+    for (const permission of await db.listPermissions(cursor)) {
       if (permission.role === 'admin' && permission.scope === 'user') {
         admins.add(permission.scope_id);
       }
     }
-    const current = db.getFolder(cursor);
+    const current = await db.getFolder(cursor);
     cursor = current?.parent_id ?? null;
   }
   return [...admins];

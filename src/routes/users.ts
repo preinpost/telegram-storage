@@ -18,9 +18,9 @@ export function usersRoutes(deps: AppDeps, sessionSecret: string): Hono<AppEnv> 
   const app = new Hono<AppEnv>();
   app.use('*', requireAuth(sessionSecret, deps.db));
 
-  app.get('/', (c) => {
+  app.get('/', async (c) => {
     assertGlobalAdmin(c.get('user'));
-    return c.json({ users: deps.db.listUsers().map(userJson) });
+    return c.json({ users: (await deps.db.listUsers()).map(userJson) });
   });
 
   app.patch('/:id', async (c) => {
@@ -33,21 +33,21 @@ export function usersRoutes(deps: AppDeps, sessionSecret: string): Hono<AppEnv> 
       throw new HttpError(400, 'role must be admin or member');
     }
 
-    const target = deps.db.getUserById(id);
+    const target = await deps.db.getUserById(id);
     if (!target) throw new HttpError(404, 'user not found');
 
     if (target.role !== role) {
       // Never demote the last remaining global admin.
       if (target.role === 'admin' && role !== 'admin') {
-        const adminCount = deps.db.listUsers().filter((u) => u.role === 'admin').length;
+        const adminCount = (await deps.db.listUsers()).filter((u) => u.role === 'admin').length;
         if (adminCount <= 1) {
           throw new HttpError(403, 'cannot demote the last admin');
         }
       }
-      deps.db.updateUserRole(id, role);
+      await deps.db.updateUserRole(id, role);
     }
 
-    const updated = deps.db.getUserById(id) ?? target;
+    const updated = (await deps.db.getUserById(id)) ?? target;
     return c.json({ user: userJson(updated) });
   });
 

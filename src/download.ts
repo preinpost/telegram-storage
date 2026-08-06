@@ -51,9 +51,9 @@ export async function openDownload(
   deps: DownloadServiceDeps,
   fileId: number,
 ): Promise<DownloadResult> {
-  const file = deps.db.getFile(fileId);
+  const file = await deps.db.getFile(fileId);
   if (!file || file.deleted_at !== null) throw new HttpError(404, 'file not found');
-  const parts = deps.db.getPartsForFile(fileId);
+  const parts = await deps.db.getPartsForFile(fileId);
   if (parts.length === 0) throw new HttpError(500, 'file has no stored parts');
 
   if (deps.cache && file.sha256) {

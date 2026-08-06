@@ -1,0 +1,13 @@
+node_modules
+web/node_modules
+web/dist
+dist
+data
+tmp
+.git
+.env
+*.log
+Taskfile.yaml
+TODOS.md
+docs
+drizzle

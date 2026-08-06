@@ -1,0 +1,36 @@
+# telegram-storage — single-container deployment (API + built SPA).
+#
+# Usage:
+#   docker compose up --build -d
+#   curl http://localhost:3000/api/auth/config
+#   open http://localhost:3000
+#
+# The SQLite DB lives under ./data (bind-mounted so it persists across
+# container recreation). Mock mode works out of the box (no Telegram token);
+# add real values via a .env file (see .env.example / .env.sample).
+
+services:
+  app:
+    build: .
+    image: telegram-storage
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      HOST: 0.0.0.0
+      PORT: "3000"
+      STATIC_DIR: ./web/dist
+      DB_PATH: ./data/telegram-storage.db
+      TMP_DIR: ./tmp
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test:
+        ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s

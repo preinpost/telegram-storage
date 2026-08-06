@@ -244,6 +244,34 @@ npm run dev:web                  # == npm --prefix web run dev
 
 빌드: `npm run build:web` (tsc + vite build → `web/dist`). 프리뷰: `npm run preview:web`.
 
+## Docker 배포 (단일 컨테이너)
+
+`Dockerfile`이 API 서버 + 빌드된 SPA(`web/dist`)를 한 컨테이너로 묶습니다. `STATIC_DIR`이 설정되면
+Hono 앱이 `/api/*`와 함께 정적 SPA(히스토리 폴백 포함)를 서빙합니다.
+
+```bash
+# 이미지 빌드 + 컨테이너 기동 (mock 모드 기본 — 토큰 없이 동작)
+docker compose up --build -d
+open http://localhost:3000
+
+# 로그 / 중지
+ docker compose logs -f app
+docker compose down
+```
+
+- SQLite DB는 `./data`에 바인드 마운트되어 컨테이너 재생성에도 유지됩니다.
+- 실전 봇 설정은 `.env` 파일로 주입 (`TELEGRAM_BOT_TOKEN`, `STORAGE_CHAT_ID`, `SESSION_SECRET` … — `.env.example` 참고).
+- healthcheck: `GET /health`.
+
+## DB 계층 (Drizzle)
+
+저장소 계층은 **Drizzle ORM** 기반입니다. `src/db/schema.ts`가 스키마의 단일 소스이며,
+`src/db.ts`의 `Db` 클래스는 **비동기(async) 인터페이스**로 노출됩니다 (런타임은 better-sqlite3 동기 드라이버).
+이렇게 분리한 이유: 같은 스키마/인터페이스로 **Cloudflare D1**(Workers)로 이식할 수 있게 하기 위함입니다.
+
+- 마이그레이션 생성 (sqlite): `npx drizzle-kit generate` → `./drizzle/*.sql` (drizzle.config.ts)
+- 런타임 테이블 생성은 기존 `PRAGMA user_version` 기반 `MIGRATIONS`가 계속 담당 (기존 DB 호환).
+
 ## 테스트 / 검증
 
 ```bash

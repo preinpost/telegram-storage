@@ -40,6 +40,12 @@ export interface Config {
   cacheMaxMb: number;
   /** Add the Secure flag to session cookies (deployments behind HTTPS). */
   cookieSecure: boolean;
+  /**
+   * Directory that contains the built SPA (web/dist) to serve alongside the
+   * API. Empty → API only (dev: vite serves the SPA). Used for the single-
+   * container Docker deployment.
+   */
+  staticDir: string;
 }
 
 function int(value: string | undefined, fallback: number, label: string): number {
@@ -77,5 +83,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     cacheDir: env.CACHE_DIR?.trim() || '',
     cacheMaxMb: int(env.CACHE_MAX_MB, 1024, 'CACHE_MAX_MB'),
     cookieSecure: env.COOKIE_SECURE === 'true' || env.COOKIE_SECURE === '1',
+    staticDir: env.STATIC_DIR?.trim() || '',
   };
 }

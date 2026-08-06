@@ -49,7 +49,7 @@ export function authRoutes(deps: AppDeps, sessionSecret: string): Hono<AppEnv> {
     const now = Date.now();
     const displayName =
       [result.user.first_name, result.user.last_name].filter(Boolean).join(' ').trim() || null;
-    const user = deps.db.findOrCreateUser(
+    const user = await deps.db.findOrCreateUser(
       String(result.user.id),
       result.user.username ?? `tg_${result.user.id}`,
       displayName,
@@ -73,7 +73,7 @@ export function authRoutes(deps: AppDeps, sessionSecret: string): Hono<AppEnv> {
         ? body.displayName.trim()
         : username;
     const now = Date.now();
-    const user = deps.db.findOrCreateUser(null, username, displayName, now);
+    const user = await deps.db.findOrCreateUser(null, username, displayName, now);
     setSessionCookie(c, sessionSecret, user, now, secure);
     return c.json({ user: toUserJson(user) });
   });
@@ -87,11 +87,11 @@ export function authRoutes(deps: AppDeps, sessionSecret: string): Hono<AppEnv> {
    * issued before this moment (including a replayed stolen cookie) is
    * rejected by requireAuth from now on.
    */
-  app.post('/logout', (c) => {
+  app.post('/logout', async (c) => {
     const payload = verifySession(getCookie(c, SESSION_COOKIE_NAME), sessionSecret);
     if (payload) {
-      const user = deps.db.getUserById(payload.uid);
-      if (user) deps.db.bumpSessionVersion(user.id);
+      const user = await deps.db.getUserById(payload.uid);
+      if (user) await deps.db.bumpSessionVersion(user.id);
     }
     deleteCookie(c, SESSION_COOKIE_NAME, { path: '/' });
     return c.body(null, 204);

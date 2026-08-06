@@ -22,7 +22,7 @@ describe('integrity: checksum verification and part ordering', () => {
     const original = randomBuffer(SIZE);
     const { id } = await uploadBytes(h.baseUrl, original, 'corrupt-first.bin', h.cookie);
 
-    h.db.corruptChecksum(Number(id), 0);
+    await h.db.corruptChecksum(Number(id), 0);
 
     const res = await fetch(`${h.baseUrl}/api/files/${id}/download`, { headers: { cookie: h.cookie } });
     expect(res.status).toBe(500);
@@ -35,7 +35,7 @@ describe('integrity: checksum verification and part ordering', () => {
     const original = randomBuffer(SIZE);
     const { id } = await uploadBytes(h.baseUrl, original, 'corrupt-late.bin', h.cookie);
 
-    h.db.corruptChecksum(Number(id), 2); // last part
+    await h.db.corruptChecksum(Number(id), 2); // last part
 
     const res = await fetch(`${h.baseUrl}/api/files/${id}/download`, { headers: { cookie: h.cookie } });
     expect(res.status).toBe(200);
@@ -64,7 +64,7 @@ describe('integrity: checksum verification and part ordering', () => {
     // Swap part_index 0 <-> 1 in the DB. The download must order rows by
     // part_index, so the output becomes part1+part0+part2 (byte-exact).
     const PART = 15 * 1024 * 1024;
-    h.db.swapPartIndices(Number(id), 0, 1);
+    await h.db.swapPartIndices(Number(id), 0, 1);
 
     const dl = await download(h.baseUrl, id, h.cookie);
     expect(dl.status).toBe(200);
@@ -82,7 +82,7 @@ describe('integrity: checksum verification and part ordering', () => {
     const { id } = await uploadBytes(h.baseUrl, original, 'missing.bin', h.cookie);
 
     // Remove the stored blob for part 0 from the mock Telegram store.
-    const parts = h.db.getPartsForFile(Number(id));
+    const parts = await h.db.getPartsForFile(Number(id));
     await h.tg.deleteBlob(parts[0]!.tg_file_id);
 
     const res = await fetch(`${h.baseUrl}/api/files/${id}/download`, { headers: { cookie: h.cookie } });

@@ -25,12 +25,14 @@
     "@grammyjs/transformer-throttler": "^1.2.1",
     "@hono/node-server": "^2.1.0",
     "better-sqlite3": "^13.0.3",
+    "drizzle-orm": "^0.45.2",
     "grammy": "^1.45.1",
     "hono": "^4.13.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^26.1.2",
+    "drizzle-kit": "^0.31.10",
     "tsx": "^4.23.9",
     "typescript": "^7.0.2",
     "vitest": "^4.1.10"

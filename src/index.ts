@@ -1,4 +1,5 @@
 import { serve } from '@hono/node-server';
+import { serveStatic } from '@hono/node-server/serve-static';
 import { join } from 'node:path';
 import { createApp } from './app.ts';
 import { DiskCache } from './cache.ts';
@@ -53,6 +54,20 @@ const app = createApp({
   cookieSecure: config.cookieSecure,
 });
 
+// Single-container deployment: serve the built SPA (web/dist) next to the
+// API when STATIC_DIR is set (the Docker image sets it default). The API
+// routes already finalize their responses, so the @hono/node-server
+// serveStatic middleware (which early-returns on a finalized response) never
+// shadows them. The second middleware is the SPA history fallback: any
+// client-router path that isn't a real file serves index.html.
+if (config.staticDir) {
+  app.use('*', serveStatic({ root: config.staticDir, index: 'index.html' }));
+  app.use('*', serveStatic({ root: config.staticDir, path: '/index.html' }));
+}
+
+if (config.staticDir) {
+  console.log(`Serving static SPA from ${config.staticDir}`);
+}
 serve({ fetch: app.fetch, port: config.port, hostname: config.host }, (info) => {
   console.log(
     `telegram-storage listening on http://${config.host}:${info.port} ` +

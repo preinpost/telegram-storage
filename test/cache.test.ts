@@ -37,7 +37,7 @@ describe('download disk cache (CACHE_DIR)', () => {
   it('still verifies per-part checksums on the cache-miss assembly path', async () => {
     const h = await harness({ cacheDir: 'cache' });
     const up = await uploadBytes(h.baseUrl, randomBuffer(64), 'corrupt.bin', h.cookie);
-    h.db.corruptChecksum(Number(up.id), 0);
+    await h.db.corruptChecksum(Number(up.id), 0);
 
     const dl = await download(h.baseUrl, up.id, h.cookie);
     expect(dl.status).toBe(500); // checksum mismatch aborts before caching

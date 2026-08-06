@@ -121,7 +121,7 @@ export async function commitUpload(
     }
 
     const now = Date.now();
-    const id = deps.db.insertFileWithParts(
+    const id = await deps.db.insertFileWithParts(
       { name: input.name, size: spool.size, mime: input.mime, sha256: fileHash.digest('hex') },
       sent,
       now,
