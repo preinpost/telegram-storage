@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { api, errorMessage } from '../api';
 import { useI18n } from '../i18n';
 import { btn, btnPrimary, input } from '../ui';
@@ -123,6 +123,7 @@ function TelegramWidget({
   onAuth: (data: TelegramAuthData) => void;
 }) {
   const t = useI18n().t;
+  const containerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const w = window as unknown as { onTelegramAuth?: (data: TelegramAuthData) => void };
     w.onTelegramAuth = onAuth;
@@ -133,19 +134,25 @@ function TelegramWidget({
     script.setAttribute('data-telegram-login', botUsername);
     script.setAttribute('data-onauth', 'onTelegramAuth');
     script.setAttribute('data-request-access', 'write');
-    document.body.appendChild(script);
+    // telegram-widget.js 는 자기 script 태그 위치에 iframe 을 삽입한다.
+    // body 끝에 붙이면 버튼이 카드 밖(페이지 하단)으로 밀려나므로, 카드 안
+    // 컨테이너에 붙여 버튼이 로그인 카드 안에 표시되게 한다.
+    containerRef.current?.appendChild(script);
 
     return () => {
-      document.body.removeChild(script);
+      containerRef.current?.removeChild(script);
       delete w.onTelegramAuth;
     };
   }, [botUsername, onAuth]);
 
   return (
-    <p className="mt-3 text-xs text-muted">
-      {t('login.telegramHint1')}
-      <br />
-      {t('login.telegramHint2')}
-    </p>
+    <>
+      <div ref={containerRef} className="mb-4 flex justify-center" />
+      <p className="mt-3 text-xs text-muted">
+        {t('login.telegramHint1')}
+        <br />
+        {t('login.telegramHint2')}
+      </p>
+    </>
   );
 }
