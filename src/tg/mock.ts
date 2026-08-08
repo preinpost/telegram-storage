@@ -73,6 +73,7 @@ export class MockTgClient implements TgClient {
     // the enforced start-to-start interval without write I/O jitter.
     const entry: SendLogEntry = { index, fileName: input.fileName, size: input.data.length, at: Date.now() };
     this.sendLog.push(entry);
+    input.onProgress?.(input.data.length);
     await fsp.writeFile(join(this.dir, `${fileId}.bin`), input.data);
     this.stored.set(fileId, input.fileName);
     const messageId = this.nextMessageId++;

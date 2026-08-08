@@ -90,7 +90,6 @@ export async function startHarness(options: StartHarnessOptions = {}): Promise<T
     queue,
     tmpDir: join(tmp, 'tmp'),
     chatId: options.chatId ?? '-100telegram-storage-mock',
-    queueIntervalMs: 50,
     botToken: options.botToken ?? null,
     botUsername: options.botUsername ?? null,
     devAuth,

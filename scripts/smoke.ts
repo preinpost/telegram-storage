@@ -62,7 +62,6 @@ async function main(): Promise<void> {
     queue,
     tmpDir: join(config.tmpDir, 'smoke-tmp'),
     chatId: config.chatId ?? '-100telegram-storage-mock',
-    queueIntervalMs: config.queueIntervalMs,
     botToken: config.botToken,
     botUsername: config.botUsername,
     devAuth: config.devAuth,
@@ -128,20 +127,31 @@ async function main(): Promise<void> {
     if (!upRes.ok) {
       throw new Error(`upload failed: HTTP ${upRes.status} ${await upRes.text()}`);
     }
-    const uploaded = (await upRes.json()) as { id: string; size: number; partCount: number };
-    console.log(
-      `[smoke] uploaded id=${uploaded.id} size=${uploaded.size} parts=${uploaded.partCount}`,
-    );
+    const uploaded = (await upRes.json()) as { id: string; size: number };
+    console.log(`[smoke] uploaded id=${uploaded.id} size=${uploaded.size} (transferring in background)`);
     if (uploaded.size !== size) {
       throw new Error(`upload size mismatch: ${uploaded.size} != ${size}`);
     }
 
-    // 3. list
-    const listRes = await fetch(`${baseUrl}/api/files`, { headers: authHeaders });
-    const list = (await listRes.json()) as { files: Array<{ id: string }> };
-    if (!list.files.some((f) => f.id === uploaded.id)) {
-      throw new Error('uploaded file missing from GET /api/files');
+    // 3. wait for the background Telegram transfer to finish, then list
+    let status = 'uploading';
+    for (let i = 0; i < 600; i++) {
+      const listRes = await fetch(`${baseUrl}/api/files`, { headers: authHeaders });
+      const list = (await listRes.json()) as {
+        files: Array<{ id: string; status?: string; error?: string | null }>;
+      };
+      const f = list.files.find((x) => x.id === uploaded.id);
+      if (!f) {
+        throw new Error('uploaded file missing from GET /api/files');
+      }
+      status = f.status ?? 'ready';
+      if (status !== 'uploading') break;
+      await new Promise((r) => setTimeout(r, 100));
     }
+    if (status !== 'ready') {
+      throw new Error(`background upload did not finish (status=${status})`);
+    }
+    console.log(`[smoke] transfer complete (status=ready)`);
 
     // 4. download and verify sha256 + length
     console.log(`[smoke] downloading via GET /api/files/${uploaded.id}/download ...`);
@@ -169,7 +179,7 @@ async function main(): Promise<void> {
       throw new Error('file still listed after DELETE');
     }
 
-    console.log(`[smoke] PASS — ${sizeMb}MB round-trip integrity verified (sha256 match, ${uploaded.partCount} parts)`);
+    console.log(`[smoke] PASS — ${sizeMb}MB round-trip integrity verified (sha256 match)`);
   } finally {
     server.close();
     db.close();

@@ -48,7 +48,6 @@ const app = createApp({
   queue,
   tmpDir: config.tmpDir,
   chatId,
-  queueIntervalMs: config.queueIntervalMs,
   botToken: config.botToken,
   botUsername: config.botUsername,
   devAuth: config.devAuth,

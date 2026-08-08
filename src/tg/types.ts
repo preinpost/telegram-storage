@@ -10,6 +10,8 @@ export interface SendDocumentInput {
   chatId: string;
   fileName: string;
   data: Buffer;
+  /** Called as bytes of `data` are handed to the network (0 → data.length). */
+  onProgress?: (sentBytes: number) => void;
 }
 
 export interface SendDocumentResult {
