@@ -296,6 +296,18 @@ export class Db {
       .run();
   }
 
+  /**
+   * Startup sweep: uploads still 'uploading' from a previous run can never
+   * commit (their spool is gone), so mark them failed.
+   */
+  async failStaleUploads(now: number = Date.now()): Promise<void> {
+    this.db
+      .update(filesTable)
+      .set({ status: 'failed', error: 'server restarted during upload', updated_at: now })
+      .where(and(eq(filesTable.status, 'uploading'), isNull(filesTable.deleted_at)))
+      .run();
+  }
+
   async getFile(id: number): Promise<FileRow | undefined> {
     return this.db.select().from(filesTable).where(eq(filesTable.id, id)).get() as
       | FileRow

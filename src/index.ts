@@ -12,6 +12,9 @@ import { MockTgClient } from './tg/mock.ts';
 const config = loadConfig();
 
 const db = new Db(config.dbPath);
+// Uploads left in 'uploading' by a previous run can never commit (their
+// spool is gone) — mark them failed on startup.
+void db.failStaleUploads();
 const real = config.botToken !== null;
 // Mock mode works without any token; a placeholder chat id keeps uploads happy.
 const tg = real ? new GrammyTgClient(config.botToken as string) : new MockTgClient({ dir: join(config.tmpDir, 'mock-tg') });
