@@ -102,14 +102,14 @@ const FileList = forwardRef<FileListHandle, Props>(function FileList(
           const now = performance.now();
           const bytes = (percent / 100) * next.file.size;
           const dt = (now - lastAt) / 1000;
-          // Keep the previous rate when events arrive faster than we can
-          // measure (prevents the rate badge from flickering in/out).
-          const speed = dt > 0.05 ? (bytes - lastBytes) / dt : lastSpeed;
+          // Instant rate, then EMA-smooth it so the readout eases toward the
+          // true rate instead of jumping on every progress event.
+          const instant = dt > 0.05 ? (bytes - lastBytes) / dt : 0;
+          lastSpeed = lastSpeed === 0 ? instant : lastSpeed * 0.6 + instant * 0.4;
           lastAt = now;
           lastBytes = bytes;
-          lastSpeed = speed;
           setUploads((all) =>
-            all.map((u) => (u.key === next.key ? { ...u, percent, speed } : u)),
+            all.map((u) => (u.key === next.key ? { ...u, percent, speed: lastSpeed } : u)),
           );
         },
         next.controller.signal,
