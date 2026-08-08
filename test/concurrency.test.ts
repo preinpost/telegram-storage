@@ -65,7 +65,8 @@ describe('concurrency', () => {
     const data = randomBuffer(16 * 1024 * 1024 + 7);
     const up = await uploadBytes(h.baseUrl, data, 'big.bin', h.cookie);
     expect(up.status).toBe(201);
-    expect(up.body.partCount).toBe(2);
+    expect(up.file?.status).toBe('ready');
+    expect(h.tg.sendLog).toHaveLength(2);
 
     const res = await fetch(`${h.baseUrl}/api/files/${up.id}/download`, {
       headers: { cookie: h.cookie },

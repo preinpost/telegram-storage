@@ -66,6 +66,14 @@ export class GrammyTgClient implements TgClient {
     }
     return Buffer.from(await res.arrayBuffer());
   }
+
+  async deleteMessage(chatId: string, messageId: number): Promise<void> {
+    try {
+      await this.bot.api.deleteMessage(chatId, messageId);
+    } catch (err) {
+      throw toTgApiError(err);
+    }
+  }
 }
 
 function toTgApiError(err: unknown): TgApiError {

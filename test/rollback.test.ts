@@ -30,17 +30,27 @@ describe('upload failure rollback', () => {
       headers: { cookie: h.cookie },
       body: formData(original, 'rollback.bin'),
     });
-    expect(res.status).toBe(500);
-    const body = (await res.json()) as { error: string };
-    expect(body.error).toContain('simulated telegram outage');
+    // Accepted synchronously (background commit), so the response is 201.
+    expect(res.status).toBe(201);
 
-    // Rollback: no files row, no parts rows.
-    expect(await h.db.listActiveFiles()).toHaveLength(0);
+    // Wait for the background commit to fail and flip the file to 'failed'.
+    let failedFile: { status?: string; error?: string } | null = null;
+    for (let i = 0; i < 400; i++) {
+      const { files } = (await (await fetch(`${h.baseUrl}/api/files`, { headers: { cookie: h.cookie } })).json()) as {
+        files: { status?: string; error?: string }[];
+      };
+      failedFile = files.find((f) => f.status === 'failed') ?? null;
+      if (failedFile) break;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    expect(failedFile?.error).toContain('simulated telegram outage');
+
+    // Rollback: no parts rows (the pending file row stays, marked failed).
     expect(await h.db.countParts()).toBe(0);
 
-    // The 1 chunk that was already sent to Telegram stays there (orphan) —
-    // inherent to the store-in-Telegram-first design; only DB state is atomic.
-    expect(h.tg.stored.size).toBe(1);
+    // The 1 chunk that was already sent to Telegram is deleted (deleteMessage).
+    expect(h.tg.stored.size).toBe(0);
+    expect(h.tg.deletedMessages).toHaveLength(1);
   });
 
   it('rolls back when the very first chunk fails', async () => {
@@ -52,9 +62,18 @@ describe('upload failure rollback', () => {
       headers: { cookie: h.cookie },
       body: formData(randomBuffer(SIZE), 'fail-first.bin'),
     });
-    expect(res.status).toBe(500);
-    expect(await h.db.listActiveFiles()).toHaveLength(0);
+    expect(res.status).toBe(201); // accepted; commit runs in the background
+
+    // Wait for the background commit to fail and flip the file to 'failed'.
+    for (let i = 0; i < 400; i++) {
+      const { files } = (await (await fetch(`${h.baseUrl}/api/files`, { headers: { cookie: h.cookie } })).json()) as {
+        files: { status?: string }[];
+      };
+      if (files.some((f) => f.status === 'failed')) break;
+      await new Promise((r) => setTimeout(r, 25));
+    }
     expect(await h.db.countParts()).toBe(0);
     expect(h.tg.stored.size).toBe(0);
+    expect(h.tg.deletedMessages).toHaveLength(0);
   });
 });

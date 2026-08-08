@@ -20,6 +20,10 @@ export interface FileRow {
   owner_id: number | null;
   /** Full-file sha256 (upload-time), used as the download-cache key. null for legacy rows. */
   sha256: string | null;
+  /** 'uploading' (accepted, parts not persisted yet) → 'ready' | 'failed'. */
+  status: 'uploading' | 'ready' | 'failed';
+  /** Failure reason when status = 'failed'. */
+  error: string | null;
   deleted_at: number | null;
   created_at: number;
   updated_at: number;
@@ -72,7 +76,7 @@ export interface NewFile {
   size: number;
   mime: string;
   /** Full-file sha256 (upload-time), stored for the download cache. */
-  sha256: string;
+  sha256: string | null;
 }
 
 export interface NewPart {
@@ -105,6 +109,8 @@ const MIGRATIONS: string[] = [
     folder_id INTEGER,
     owner_id INTEGER,
     deleted_at INTEGER,
+    status TEXT NOT NULL DEFAULT 'ready' CHECK (status IN ('uploading', 'ready', 'failed')),
+    error TEXT,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
   );
@@ -191,6 +197,13 @@ export class Db {
     }
     this.ensureColumn(client, 'users', 'sess_version', 'sess_version INTEGER NOT NULL DEFAULT 0');
     this.ensureColumn(client, 'files', 'sha256', 'sha256 TEXT');
+    this.ensureColumn(
+      client,
+      'files',
+      'status',
+      "status TEXT NOT NULL DEFAULT 'ready' CHECK (status IN ('uploading', 'ready', 'failed'))",
+    );
+    this.ensureColumn(client, 'files', 'error', 'error TEXT');
   }
 
   private ensureColumn(
@@ -212,31 +225,37 @@ export class Db {
   /**
    * Atomically commits the files row plus all parts rows. Called only after
    * every chunk has been successfully stored in Telegram, so a failed upload
-   * never leaves partial rows behind ("parts rollback").
+   * never leaves partial rows behind (parts are written only after every chunk
+   * has been stored in Telegram).
    */
-  async insertFileWithParts(
+  async insertPendingFile(
     file: NewFile,
-    parts: NewPart[],
     now: number,
     folderId: number | null,
     ownerId: number | null,
   ): Promise<number> {
-    return this.db.transaction((tx) => {
-      const info = tx
-        .insert(filesTable)
-        .values({
-          name: file.name,
-          size: file.size,
-          mime: file.mime,
-          sha256: file.sha256,
-          folder_id: folderId,
-          owner_id: ownerId,
-          deleted_at: null,
-          created_at: now,
-          updated_at: now,
-        })
-        .run();
-      const fileId = Number(info.lastInsertRowid);
+    const info = this.db
+      .insert(filesTable)
+      .values({
+        name: file.name,
+        size: file.size,
+        mime: file.mime,
+        sha256: null,
+        status: 'uploading',
+        error: null,
+        folder_id: folderId,
+        owner_id: ownerId,
+        deleted_at: null,
+        created_at: now,
+        updated_at: now,
+      })
+      .run();
+    return Number(info.lastInsertRowid);
+  }
+
+  /** Persists the Telegram parts of a completed upload (atomic). */
+  async insertPartsFor(fileId: number, parts: NewPart[], now: number): Promise<void> {
+    this.db.transaction((tx) => {
       for (const part of parts) {
         tx.insert(partsTable)
           .values({
@@ -251,8 +270,30 @@ export class Db {
           })
           .run();
       }
-      return fileId;
     });
+  }
+
+  /** Transitions a file's upload status (uploading → ready/failed). */
+  async markFileStatus(
+    id: number,
+    status: FileRow['status'],
+    error: string | null = null,
+    now: number = Date.now(),
+  ): Promise<void> {
+    this.db
+      .update(filesTable)
+      .set({ status, error, updated_at: now })
+      .where(eq(filesTable.id, id))
+      .run();
+  }
+
+  /** Fills in the full-file sha256 once the background upload commits. */
+  async updateFileSha256(id: number, sha256: string, now: number = Date.now()): Promise<void> {
+    this.db
+      .update(filesTable)
+      .set({ sha256, updated_at: now })
+      .where(eq(filesTable.id, id))
+      .run();
   }
 
   async getFile(id: number): Promise<FileRow | undefined> {

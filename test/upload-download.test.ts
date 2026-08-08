@@ -25,8 +25,11 @@ describe('upload / download roundtrip (mock Telegram)', () => {
     const uploaded = await uploadBytes(h.baseUrl, original, 'big.bin', h.cookie);
     expect(uploaded.status).toBe(201);
     expect(uploaded.body.size).toBe(BIG_SIZE);
-    expect(uploaded.body.partCount).toBe(3); // 36MB → 3 × 15MB chunks
+    expect(uploaded.body.status).toBe('uploading'); // accepted sync, committed async
     expect(uploaded.id).toMatch(/^\d+$/);
+    // Background commit finished (helper polls until ready) → 3 × 15MB chunks.
+    expect(uploaded.file?.status).toBe('ready');
+    expect(h.tg.sendLog).toHaveLength(3); // 36MB → 3 × 15MB chunks
 
     const dl = await download(h.baseUrl, uploaded.id, h.cookie);
     expect(dl.status).toBe(200);
@@ -40,7 +43,8 @@ describe('upload / download roundtrip (mock Telegram)', () => {
 
     const uploaded = await uploadBytes(h.baseUrl, original, 'small.txt', h.cookie);
     expect(uploaded.status).toBe(201);
-    expect(uploaded.body.partCount).toBe(1);
+    expect(uploaded.file?.status).toBe('ready');
+    expect(h.tg.sendLog).toHaveLength(1);
 
     const dl = await download(h.baseUrl, uploaded.id, h.cookie);
     expect(dl.status).toBe(200);

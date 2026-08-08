@@ -67,23 +67,32 @@ export async function cleanupSpool(spool: SpooledUpload): Promise<void> {
 }
 
 /**
- * Phase 2: split the spooled body into fixed 15MB slices, send each via the
- * rate-limit queue, and — only after ALL chunks succeeded — commit files +
- * parts in one transaction. On failure nothing is ever committed (no files
- * row, no parts rows); already-sent Telegram messages become orphans
- * (inherent to the design). The spool directory is removed in all cases.
+ * Phase 2 (background): split the spooled body into fixed 15MB slices, send
+ * each via the rate-limit queue, then persist parts + flip the file to
+ * 'ready'. Runs after the HTTP handler has already inserted a pending
+ * ('uploading') files row and responded, so the client sees the file in the
+ * list immediately.
+ *
+ * On failure the file is marked 'failed' and every part already sent to
+ * Telegram is deleted (best-effort deleteMessage), so the chat stays clean
+ * and the DB never references missing parts. The spool directory is removed
+ * in all cases.
  */
 export async function commitUpload(
   deps: UploadServiceDeps,
   spool: SpooledUpload,
   input: UploadInput,
+  fileId: number,
 ): Promise<UploadResult> {
   if (!deps.chatId) {
-    throw new HttpError(500, 'STORAGE_CHAT_ID is not configured');
+    const msg = 'STORAGE_CHAT_ID is not configured';
+    await deps.db.markFileStatus(fileId, 'failed', msg);
+    await cleanupSpool(spool);
+    throw new HttpError(500, msg);
   }
+  const sent: SentPart[] = [];
   try {
     const fd = await fsp.open(spool.bodyPath, 'r');
-    const sent: SentPart[] = [];
     const fileHash = createHash('sha256');
     try {
       let offset = 0;
@@ -121,15 +130,30 @@ export async function commitUpload(
     }
 
     const now = Date.now();
-    const id = await deps.db.insertFileWithParts(
-      { name: input.name, size: spool.size, mime: input.mime, sha256: fileHash.digest('hex') },
-      sent,
-      now,
-      input.folderId,
-      input.ownerId,
-    );
-    return { id, name: input.name, size: spool.size, mime: input.mime, partCount: sent.length };
+    await deps.db.insertPartsFor(fileId, sent, now);
+    await deps.db.updateFileSha256(fileId, fileHash.digest('hex'), now);
+    await deps.db.markFileStatus(fileId, 'ready', null, now);
+    return { id: fileId, name: input.name, size: spool.size, mime: input.mime, partCount: sent.length };
+  } catch (err) {
+    // Roll back parts already stored in Telegram (best-effort, newest first)
+    // so a failed upload leaves no orphan chunks behind.
+    await rollbackSentParts(deps, sent);
+    const reason = err instanceof Error ? err.message : String(err);
+    await deps.db.markFileStatus(fileId, 'failed', reason.slice(0, 500));
+    throw err;
   } finally {
     await cleanupSpool(spool);
+  }
+}
+
+/** Deletes already-sent chunks from Telegram (newest first). Failures are ignored. */
+async function rollbackSentParts(deps: UploadServiceDeps, sent: SentPart[]): Promise<void> {
+  for (let i = sent.length - 1; i >= 0; i--) {
+    const part = sent[i]!;
+    try {
+      await deps.queue.run(() => deps.tg.deleteMessage(part.tgChatId, part.tgMessageId));
+    } catch {
+      // Best-effort: a leftover message is preferable to blocking the rollback.
+    }
   }
 }

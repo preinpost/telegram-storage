@@ -27,6 +27,12 @@ export const filesTable = sqliteTable(
     deleted_at: integer('deleted_at'),
     /** Full-file sha256 (upload-time), used as the download-cache key. */
     sha256: text('sha256'),
+    /** 'uploading' (accepted, parts not persisted yet) → 'ready' | 'failed'. */
+    status: text('status', { enum: ['uploading', 'ready', 'failed'] })
+      .notNull()
+      .default('ready'),
+    /** Failure reason when status = 'failed'. */
+    error: text('error'),
     created_at: integer('created_at').notNull(),
     updated_at: integer('updated_at').notNull(),
   },

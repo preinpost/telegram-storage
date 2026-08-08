@@ -169,14 +169,29 @@ export async function uploadBytes(
   filename = 'test.bin',
   cookie?: string,
   fields?: Record<string, string>,
-): Promise<{ id: string; status: number; body: Record<string, unknown> }> {
+): Promise<{ id: string; status: number; body: Record<string, unknown>; file: Record<string, unknown> | null }> {
   const res = await fetch(`${baseUrl}/api/files`, {
     method: 'POST',
     headers: cookie ? { cookie } : {},
     body: formData(buf, filename, fields),
   });
   const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-  return { id: String(body.id ?? ''), status: res.status, body };
+  const id = String(body.id ?? '');
+  // Uploads are accepted synchronously but committed in the background;
+  // poll the list until the file leaves the 'uploading' state.
+  let file: Record<string, unknown> | null = null;
+  if (res.status === 201 && id) {
+    const qs = fields?.folder_id ? `?folder_id=${encodeURIComponent(fields.folder_id)}` : '';
+    for (let i = 0; i < 400; i++) {
+      const list = (await (
+        await fetch(`${baseUrl}/api/files${qs}`, { headers: cookie ? { cookie } : {} })
+      ).json()) as { files: Record<string, unknown>[] };
+      file = list.files.find((f) => String(f.id) === id) ?? null;
+      if (file && file.status !== 'uploading') break;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+  }
+  return { id, status: res.status, body, file };
 }
 
 export async function download(

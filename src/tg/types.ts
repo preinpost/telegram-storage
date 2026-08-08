@@ -23,4 +23,9 @@ export interface TgClient {
   sendDocument(input: SendDocumentInput): Promise<SendDocumentResult>;
   /** Returns the raw bytes of a previously uploaded file_id. */
   getFile(fileId: string): Promise<Buffer>;
+  /**
+   * Deletes a previously sent message (used to roll back partially uploaded
+   * files). Best-effort — callers treat failures as non-fatal.
+   */
+  deleteMessage(chatId: string, messageId: number): Promise<void>;
 }

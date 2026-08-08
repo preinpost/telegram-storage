@@ -55,30 +55,51 @@ export function filesRoutes(deps: AppDeps, sessionSecret: string): Hono<AppEnv> 
     const name = sanitizeFileName(part.filename) || 'unnamed';
 
     const spool: SpooledUpload = await spoolUpload(deps.tmpDir, part.stream);
+    // The spool belongs to the background commit once we hand it off; only
+    // pre-handoff failures clean it up here.
+    let handedOff = false;
     try {
       await done; // fields are now complete (incl. folder_id)
       const folderId = await folderIdFromFields(deps, user.id, fields);
-      const result = await commitUpload(deps, spool, {
-        name,
-        mime: part.mimeType || 'application/octet-stream',
+      const now = Date.now();
+      // Insert a pending row first and respond immediately: the Telegram
+      // transfer runs in the background (commitUpload), and the client polls
+      // the list until the file flips to 'ready'.
+      const fileId = await deps.db.insertPendingFile(
+        { name, size: spool.size, mime: part.mimeType || 'application/octet-stream', sha256: null },
+        now,
         folderId,
-        ownerId: user.id,
-      });
+        user.id,
+      );
+      handedOff = true;
+      void commitUpload(
+        deps,
+        spool,
+        {
+          name,
+          mime: part.mimeType || 'application/octet-stream',
+          folderId,
+          ownerId: user.id,
+        },
+        fileId,
+      ).catch(() => undefined); // status is already set to 'failed' inside
       return c.json(
         {
-          id: String(result.id),
-          name: result.name,
-          size: result.size,
-          mime: result.mime,
+          id: String(fileId),
+          name,
+          size: spool.size,
+          mime: part.mimeType || 'application/octet-stream',
           folderId: folderId === null ? null : String(folderId),
           ownerId: String(user.id),
-          partCount: result.partCount,
+          status: 'uploading',
         },
         201,
       );
     } finally {
-      // Idempotent — commitUpload already removed the spool on success/failure.
-      await cleanupSpool(spool).catch(() => undefined);
+      if (!handedOff) {
+        // Idempotent cleanup for pre-handoff failures only.
+        await cleanupSpool(spool).catch(() => undefined);
+      }
       part.stream.resume();
     }
   });
@@ -88,6 +109,10 @@ export function filesRoutes(deps: AppDeps, sessionSecret: string): Hono<AppEnv> 
     const id = parseFileId(c.req.param('id'));
     const file = await deps.db.getFile(id);
     if (!file || file.deleted_at !== null) throw new HttpError(404, 'file not found');
+    // Only fully committed files can be downloaded.
+    if (file.status !== 'ready') {
+      throw new HttpError(file.status === 'failed' ? 410 : 409, `file is ${file.status}`);
+    }
     if (rankOf(await resolveFileRole(deps.db, user, file.folder_id)) < rankOf('read')) {
       throw new HttpError(403, 'read permission required');
     }
@@ -241,6 +266,8 @@ function toFileJson(file: FileRow): Record<string, unknown> {
     mime: file.mime,
     folderId: file.folder_id === null ? null : String(file.folder_id),
     ownerId: file.owner_id === null ? null : String(file.owner_id),
+    status: file.status,
+    error: file.error,
     createdAt: new Date(file.created_at).toISOString(),
     updatedAt: new Date(file.updated_at).toISOString(),
   };

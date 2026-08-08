@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type ChangeEvent,
+} from 'react';
 import { isAbortError } from '../api';
 import { cn } from '../cn';
 import { formatBytes, formatDate } from '../format';
@@ -16,6 +24,8 @@ interface UploadEntry {
   state: UploadState;
   controller: AbortController;
   file: File;
+  /** Smoothed transfer rate in bytes/sec (client → server leg). */
+  speed: number;
 }
 
 interface Props {
@@ -37,30 +47,36 @@ interface Props {
   onMove: (file: FileItem, folderId: string | null) => Promise<void>;
 }
 
+/** Exposed to the parent so window-level drag & drop can enqueue files. */
+export interface FileListHandle {
+  enqueue: (files: File[]) => void;
+}
+
 let uploadSeq = 0;
 
-export default function FileList({
-  files,
-  subFolders,
-  searchMode,
-  searching,
-  searchResults,
-  onOpenFolder,
-  onOpenSearchFolder,
-  canWrite,
-  folders,
-  onUpload,
-  onDelete,
-  onMove,
-}: Props) {
+const FileList = forwardRef<FileListHandle, Props>(function FileList(
+  {
+    files,
+    subFolders,
+    searchMode,
+    searching,
+    searchResults,
+    onOpenFolder,
+    onOpenSearchFolder,
+    canWrite,
+    folders,
+    onUpload,
+    onDelete,
+    onMove,
+  }: Props,
+  ref,
+) {
   const { lang, t } = useI18n();
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploads, setUploads] = useState<UploadEntry[]>([]);
-  const [dragOver, setDragOver] = useState(false);
   const [moveTarget, setMoveTarget] = useState<FileItem | null>(null);
   const uploadsRef = useRef<UploadEntry[]>([]);
   const runningRef = useRef(false);
-  const dragDepth = useRef(0);
 
   useEffect(() => {
     uploadsRef.current = uploads;
@@ -77,10 +93,20 @@ export default function FileList({
       all.map((u) => (u.key === next.key ? { ...u, state: 'uploading' as const } : u)),
     );
     try {
+      let lastAt = performance.now();
+      let lastBytes = 0;
       await onUpload(
         next.file,
         (percent) => {
-          setUploads((all) => all.map((u) => (u.key === next.key ? { ...u, percent } : u)));
+          const now = performance.now();
+          const bytes = (percent / 100) * next.file.size;
+          const dt = (now - lastAt) / 1000;
+          const speed = dt > 0.05 ? (bytes - lastBytes) / dt : 0;
+          lastAt = now;
+          lastBytes = bytes;
+          setUploads((all) =>
+            all.map((u) => (u.key === next.key ? { ...u, percent, speed } : u)),
+          );
         },
         next.controller.signal,
       );
@@ -114,6 +140,7 @@ export default function FileList({
       state: 'queued',
       controller: new AbortController(),
       file,
+      speed: 0,
     }));
     setUploads((all) => [...all, ...entries]);
   }, []);
@@ -134,35 +161,9 @@ export default function FileList({
     enqueueFiles(selected);
   };
 
-  const handleDragEnter = (e: DragEvent) => {
-    if (!canWrite || searchMode) return;
-    e.preventDefault();
-    dragDepth.current += 1;
-    setDragOver(true);
-  };
-
-  const handleDragOver = (e: DragEvent) => {
-    if (!canWrite || searchMode) return;
-    e.preventDefault();
-  };
-
-  const handleDragLeave = (e: DragEvent) => {
-    if (!canWrite || searchMode) return;
-    e.preventDefault();
-    dragDepth.current -= 1;
-    if (dragDepth.current <= 0) {
-      dragDepth.current = 0;
-      setDragOver(false);
-    }
-  };
-
-  const handleDrop = (e: DragEvent) => {
-    if (!canWrite || searchMode) return;
-    e.preventDefault();
-    dragDepth.current = 0;
-    setDragOver(false);
-    enqueueFiles(Array.from(e.dataTransfer.files));
-  };
+  // Window-level drag & drop is handled by the parent (Browser); expose the
+  // queue here so dropped files land in the same upload pipeline.
+  useImperativeHandle(ref, () => ({ enqueue: enqueueFiles }), [enqueueFiles]);
 
   const confirmDelete = (file: FileItem) => {
     if (window.confirm(t('file.deleteConfirm', { name: file.name }))) void onDelete(file);
@@ -171,13 +172,7 @@ export default function FileList({
   const rows = searchMode ? searchResults : files;
 
   return (
-    <div
-      className="relative"
-      onDragEnter={handleDragEnter}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
-    >
+    <div className="relative">
       <div className="mb-2.5 flex items-center justify-between">
         <span className="text-xs text-muted">
           {searchMode
@@ -226,6 +221,11 @@ export default function FileList({
                     ? t('upload.queued')
                     : `${u.percent}%`}
               </span>
+              {u.state === 'uploading' && u.speed > 0 && (
+                <span className="w-20 shrink-0 text-right text-[11px] text-muted">
+                  {formatBytes(u.speed)}/s
+                </span>
+              )}
               {u.state !== 'failed' && (
                 <button
                   type="button"
@@ -293,6 +293,17 @@ export default function FileList({
                   ) : (
                     <span>📄 {f.name}</span>
                   )}
+                  {f.status === 'uploading' && (
+                    <span className="ml-1.5 text-[11px] text-muted">{t('file.transferring')}</span>
+                  )}
+                  {f.status === 'failed' && (
+                    <span
+                      className="ml-1.5 rounded border border-danger-line bg-danger-bg px-1 py-0.5 text-[11px] text-danger-strong"
+                      title={f.error ?? undefined}
+                    >
+                      {t('file.transferFailed')}
+                    </span>
+                  )}
                   {searchMode && f.folderPath && f.folderPath.length > 0 && (
                     <span className="mt-0.5 flex flex-wrap items-center gap-0.5 text-[11px] text-muted">
                       {f.folderPath.map((seg, i) => (
@@ -314,14 +325,20 @@ export default function FileList({
                 <td className="hidden border-b border-[#eef2f5] px-2 py-[7px] align-middle md:table-cell">{formatDate(f.updatedAt, langToLocale(lang))}</td>
                 <td className="w-[205px] min-w-[205px] border-b border-[#eef2f5] px-2 py-[7px] text-right align-middle">
                   <div className="flex flex-nowrap justify-end gap-1 whitespace-nowrap">
-                    <a
-                      className={`${btn} ${btnSmall}`}
-                      href={`/api/files/${f.id}/download`}
-                      title={t('file.downloadTitle')}
-                    >
-                      {t('file.download')}
-                    </a>
-                    {canWrite && !searchMode && (
+                    {f.status === 'ready' ? (
+                      <a
+                        className={`${btn} ${btnSmall}`}
+                        href={`/api/files/${f.id}/download`}
+                        title={t('file.downloadTitle')}
+                      >
+                        {t('file.download')}
+                      </a>
+                    ) : (
+                      <span className="text-[11px] text-muted">
+                        {f.status === 'uploading' ? t('file.transferring') : t('file.transferFailed')}
+                      </span>
+                    )}
+                    {canWrite && !searchMode && f.status === 'ready' && (
                       <>
                         <button type="button" className={`${btn} ${btnSmall}`} onClick={() => setMoveTarget(f)}>
                           {t('file.move')}
@@ -339,12 +356,6 @@ export default function FileList({
         </table>
       )}
 
-      {dragOver && (
-        <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center rounded-lg border-2 border-dashed border-accent bg-[rgba(37,99,235,0.08)] font-semibold text-accent-dark">
-          <span>{t('upload.dropHint')}</span>
-        </div>
-      )}
-
       {moveTarget !== null && (
         <MoveModal
           key={moveTarget.id}
@@ -359,4 +370,6 @@ export default function FileList({
       )}
     </div>
   );
-}
+});
+
+export default FileList;

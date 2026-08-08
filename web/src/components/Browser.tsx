@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { api, ApiError, errorMessage, isAbortError, uploadFile } from '../api';
 import { cn } from '../cn';
 import { useT } from '../i18n';
 import { btn, btnSmall, iconBtn, roleBadge, roleBadgeAdmin } from '../ui';
 import type { FileItem, FolderNode, Permission, Role, User, UserAdmin } from '../types';
-import FileList from './FileList';
+import FileList, { type FileListHandle } from './FileList';
 import FolderTree from './FolderTree';
 import PermissionsPanel from './PermissionsPanel';
 import SettingsModal from './SettingsModal';
@@ -40,6 +40,12 @@ export default function Browser({ user, onLogout }: Props) {
   useEffect(() => {
     localStorage.setItem('ts.sidebarWidth', String(sidebarWidth));
   }, [sidebarWidth]);
+
+  // Window-level drag & drop: anywhere in the browser drops files into the
+  // current folder's upload queue (FileList exposes the enqueue handle).
+  const [dragActive, setDragActive] = useState(false);
+  const dragDepth = useRef(0);
+  const fileListRef = useRef<FileListHandle>(null);
 
   const startResize = (e: ReactMouseEvent) => {
     e.preventDefault();
@@ -158,6 +164,46 @@ export default function Browser({ user, onLogout }: Props) {
   const isAdmin = selectedRole === 'admin';
   const canWrite = selectedRole === 'write' || isAdmin;
 
+  // Window-level drag & drop: anywhere in the browser drops files into the
+  // current folder's upload queue (FileList exposes the enqueue handle).
+  useEffect(() => {
+    const hasFiles = (e: DragEvent) =>
+      Array.from(e.dataTransfer?.types ?? []).includes('Files');
+    const onEnter = (e: DragEvent) => {
+      if (!canWrite || searchMode || !hasFiles(e)) return;
+      e.preventDefault();
+      dragDepth.current += 1;
+      setDragActive(true);
+    };
+    const onOver = (e: DragEvent) => {
+      if (!canWrite || searchMode || !hasFiles(e)) return;
+      e.preventDefault(); // required to allow the drop
+    };
+    const onLeave = () => {
+      if (!canWrite || searchMode) return;
+      dragDepth.current = Math.max(0, dragDepth.current - 1);
+      if (dragDepth.current === 0) setDragActive(false);
+    };
+    const onDrop = (e: DragEvent) => {
+      if (!canWrite || searchMode) return;
+      e.preventDefault();
+      dragDepth.current = 0;
+      setDragActive(false);
+      const files = Array.from(e.dataTransfer?.files ?? []);
+      if (files.length > 0) fileListRef.current?.enqueue(files);
+    };
+    window.addEventListener('dragenter', onEnter);
+    window.addEventListener('dragover', onOver);
+    window.addEventListener('dragleave', onLeave);
+    window.addEventListener('drop', onDrop);
+    return () => {
+      window.removeEventListener('dragenter', onEnter);
+      window.removeEventListener('dragover', onOver);
+      window.removeEventListener('dragleave', onLeave);
+      window.removeEventListener('drop', onDrop);
+    };
+  }, [canWrite, searchMode]);
+
   const reloadFiles = useCallback(
     async (folderId: string | null) => {
       try {
@@ -247,7 +293,9 @@ export default function Browser({ user, onLogout }: Props) {
     async (file: File, onProgress: (percent: number) => void, signal: AbortSignal) => {
       try {
         const uploaded = await uploadFile(file, selectedId, onProgress, signal);
-        toasts.push('success', t('file.uploaded', { name: uploaded.name }));
+        // Accepted synchronously; the Telegram transfer runs in the background
+        // and the list shows the file as 'uploading' until it flips to ready.
+        toasts.push('success', t('file.accepted', { name: uploaded.name }));
         await reloadFiles(selectedId);
       } catch (err) {
         if (isAbortError(err)) throw err; // caller handles cancellation silently
@@ -257,6 +305,16 @@ export default function Browser({ user, onLogout }: Props) {
     },
     [selectedId, reloadFiles, toasts, t],
   );
+
+  // While any file is still transferring in the background, keep refreshing
+  // the list so the 'uploading' rows flip to ready/failed without a manual
+  // reload.
+  useEffect(() => {
+    const pending = files?.some((f) => f.status === 'uploading');
+    if (!pending) return;
+    const timer = window.setInterval(() => void reloadFiles(selectedId), 2000);
+    return () => window.clearInterval(timer);
+  }, [files, selectedId, reloadFiles]);
 
   const handleMove = useCallback(
     async (file: FileItem, folderId: string | null) => {
@@ -333,6 +391,13 @@ export default function Browser({ user, onLogout }: Props) {
 
   return (
     <div className="flex h-full flex-col">
+      {dragActive && canWrite && !searchMode && (
+        <div className="pointer-events-none fixed inset-0 z-[100] flex items-center justify-center border-4 border-dashed border-accent bg-[rgba(37,99,235,0.10)]">
+          <span className="rounded-xl bg-white px-6 py-4 text-lg font-bold text-accent-dark shadow-card">
+            {t('upload.dropHint')}
+          </span>
+        </div>
+      )}
       <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-panel px-3 py-2.5 sm:px-4">
         <div className="min-w-0 truncate text-base font-bold">📁 Telegram Storage</div>
         <div className="flex min-w-0 items-center gap-2">
@@ -451,6 +516,7 @@ export default function Browser({ user, onLogout }: Props) {
             {searching && <span className="text-xs text-muted">{t('common.loading')}</span>}
           </div>
           <FileList
+            ref={fileListRef}
             files={files}
             subFolders={subFolders}
             searchMode={searchMode}

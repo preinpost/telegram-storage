@@ -42,6 +42,10 @@ export class MockTgClient implements TgClient {
   public readonly stored = new Map<string, string>();
   /** Timestamped send log, for queue-timing assertions. */
   public readonly sendLog: SendLogEntry[] = [];
+  /** messageId → fileId, to support deleteMessage rollback. */
+  private readonly messages = new Map<number, string>();
+  /** Deleted message ids (rollback assertions). */
+  public readonly deletedMessages: number[] = [];
 
   /** Total number of client calls made (sendDocument + getFile). */
   get callCount(): number {
@@ -72,6 +76,7 @@ export class MockTgClient implements TgClient {
     await fsp.writeFile(join(this.dir, `${fileId}.bin`), input.data);
     this.stored.set(fileId, input.fileName);
     const messageId = this.nextMessageId++;
+    this.messages.set(messageId, fileId);
     return { messageId, fileId };
   }
 
@@ -88,5 +93,13 @@ export class MockTgClient implements TgClient {
   async deleteBlob(fileId: string): Promise<void> {
     await fsp.rm(join(this.dir, `${fileId}.bin`), { force: true });
     this.stored.delete(fileId);
+  }
+
+  async deleteMessage(_chatId: string, messageId: number): Promise<void> {
+    const fileId = this.messages.get(messageId);
+    if (!fileId) return;
+    this.messages.delete(messageId);
+    this.deletedMessages.push(messageId);
+    await this.deleteBlob(fileId);
   }
 }

@@ -45,6 +45,10 @@ export interface FileItem {
   mime: string;
   folderId: string | null;
   ownerId: string | null;
+  /** 'uploading' (accepted, transferring to Telegram) → 'ready' | 'failed'. */
+  status: 'uploading' | 'ready' | 'failed';
+  /** Failure reason when status = 'failed'. */
+  error: string | null;
   createdAt: string;
   updatedAt: string;
   /** Present on search results — root→folder path ([] for root files). */
