@@ -1,9 +1,14 @@
 # telegram-storage — single-container deployment (API + built SPA).
 #
 # Usage:
-#   docker compose up --build -d
+#   docker compose up -d
 #   curl http://localhost:3000/api/auth/config
 #   open http://localhost:3000
+#
+# 이미지 업데이트:
+#   1) Release 워크플로우로 새 버전을 배포 (또는 수동으로 Docker 워크플로우 실행)
+#   2) 아래 image 태그를 새 버전으로 변경
+#   3) docker compose pull && docker compose up -d
 #
 # The SQLite DB lives under ./data (bind-mounted so it persists across
 # container recreation). Mock mode works out of the box (no Telegram token);
@@ -11,8 +16,8 @@
 
 services:
   app:
-    build: .
-    image: telegram-storage
+    # GHCR에서 이미지 pull — 로컬 빌드하려면 아래를 build: . 로 교체
+    image: ghcr.io/preinpost/telegram-storage:v0.1.1
     restart: unless-stopped
     ports:
       - "3000:3000"

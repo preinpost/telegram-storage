@@ -1,0 +1,65 @@
+# telegram-storage — 배포용 compose 예제 (GHCR 이미지 pull, .env 불필요)
+#
+# 사용법:
+#   1) 아래 environment 값을 실제 배포 값으로 채운다
+#      (TELEGRAM_BOT_TOKEN / TELEGRAM_BOT_USERNAME / STORAGE_CHAT_ID / SESSION_SECRET 필수)
+#   2) docker compose -f compose.example.yaml up -d
+#   3) curl http://localhost:3000/api/auth/config
+#
+# 이미지 업데이트:
+#   1) Release 워크플로우로 새 버전 배포 (또는 Docker 워크플로우 수동 실행)
+#   2) image 태그를 새 버전으로 변경
+#   3) docker compose -f compose.example.yaml pull && docker compose -f compose.example.yaml up -d
+#
+# SQLite DB는 ./data 볼륨에 영속화됩니다 (컨테이너 재생성에도 유지).
+# .env 기반으로 쓰려면 compose.yaml 을 사용하세요.
+
+services:
+  app:
+    image: ghcr.io/preinpost/telegram-storage:v0.1.1
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      # --- 서버 ---
+      HOST: 0.0.0.0
+      PORT: "3000"
+      STATIC_DIR: ./web/dist          # 이미지에 포함된 SPA (변경 금지)
+
+      # --- Telegram (REAL 모드) — @BotFather에서 발급 ---
+      TELEGRAM_BOT_TOKEN: "123456:ABC-REPLACE-ME"
+      TELEGRAM_BOT_USERNAME: "my_storage_bot"
+      # 전용 비공개 채널/그룹 chat id (예: -1001234567890)
+      STORAGE_CHAT_ID: "-1001234567890"
+
+      # --- 인증 / 세션 ---
+      # 반드시 긴 랜덤 문자열로 고정 (변경 시 모든 세션 만료)
+      # 생성: openssl rand -hex 32
+      SESSION_SECRET: "REPLACE-WITH-LONG-RANDOM-STRING"
+      # HTTPS 배포: true / 로컬 HTTP 테스트: false (Secure 쿠키는 HTTP에서 동작 안 함)
+      DEV_AUTH: "false"
+      COOKIE_SECURE: "true"
+      RATE_LIMIT_PER_MINUTE: "10"
+
+      # --- 저장소 ---
+      DB_PATH: ./data/telegram-storage.db
+      TMP_DIR: ./tmp
+      # 다운로드 디스크 캐시 (data 볼륨 아래라 재시작에도 유지). 끄려면 비움
+      CACHE_DIR: ./data/cache
+      CACHE_MAX_MB: "1024"
+
+      # --- 속도제한 큐 ---
+      QUEUE_INTERVAL_MS: "1000"
+      QUEUE_MAX_RETRIES: "4"
+      QUEUE_BASE_BACKOFF_MS: "1000"
+      QUEUE_MAX_BACKOFF_MS: "60000"
+
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test:
+        ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
