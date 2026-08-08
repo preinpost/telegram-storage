@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { api, ApiError, errorMessage, isAbortError, uploadFile } from '../api';
 import { cn } from '../cn';
 import { useT } from '../i18n';
@@ -30,6 +30,35 @@ export default function Browser({ user, onLogout }: Props) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<FileItem[] | null>(null);
   const [searching, setSearching] = useState(false);
+  // Permission panel visibility + resizable folder-tree sidebar (persisted).
+  const [permsOpen, setPermsOpen] = useState(true);
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    const saved = Number(localStorage.getItem('ts.sidebarWidth'));
+    return Number.isFinite(saved) && saved >= 160 && saved <= 480 ? saved : 220;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('ts.sidebarWidth', String(sidebarWidth));
+  }, [sidebarWidth]);
+
+  const startResize = (e: ReactMouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = sidebarWidth;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    const onMove = (ev: MouseEvent) => {
+      setSidebarWidth(Math.min(480, Math.max(160, startW + ev.clientX - startX)));
+    };
+    const onUp = () => {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  };
 
   const reloadFolders = useCallback(async () => {
     try {
@@ -338,20 +367,31 @@ export default function Browser({ user, onLogout }: Props) {
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <UserManagementModal open={usersOpen} onClose={() => setUsersOpen(false)} />
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 p-2 sm:p-3 md:grid-cols-[220px_minmax(0,1fr)] xl:grid-cols-[240px_minmax(0,1fr)_auto]">
-        <aside className="min-w-0 overflow-auto rounded-lg border border-border bg-panel shadow-card">
-          <FolderTree
-            nodes={folders ?? []}
-            selectedId={selectedId}
-            canCreate={canWrite}
-            onCreate={handleCreateFolder}
-            onRename={handleRenameFolder}
-            onDelete={handleDeleteFolder}
-            onSelect={setSelectedId}
-          />
+      <div className="flex min-h-0 flex-1 gap-3 p-2 sm:p-3">
+        <aside className="flex min-h-0 shrink-0" style={{ width: sidebarWidth }}>
+          <div className="min-w-0 flex-1 overflow-auto rounded-lg border border-border bg-panel shadow-card">
+            <FolderTree
+              nodes={folders ?? []}
+              selectedId={selectedId}
+              canCreate={canWrite}
+              onCreate={handleCreateFolder}
+              onRename={handleRenameFolder}
+              onDelete={handleDeleteFolder}
+              onSelect={setSelectedId}
+            />
+          </div>
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            className="group flex w-2 shrink-0 cursor-col-resize items-center justify-center rounded hover:bg-accent/10"
+            title={t('browser.resizeSidebar')}
+            onMouseDown={startResize}
+          >
+            <div className="h-10 w-[3px] rounded-full bg-border transition-colors group-hover:bg-accent/60" />
+          </div>
         </aside>
 
-        <main className="flex min-w-0 flex-col overflow-auto rounded-lg border border-border bg-panel p-2 shadow-card sm:p-3">
+        <main className="flex min-w-0 flex-1 flex-col overflow-auto rounded-lg border border-border bg-panel p-2 shadow-card sm:p-3">
           <div className="mb-2.5 flex flex-wrap items-center gap-2 border-b border-border pb-2.5">
             <nav className="flex min-w-0 flex-1 flex-wrap items-center gap-0.5" aria-label={t('browser.breadcrumbAria')}>
               {path.map((seg, i) => {
@@ -383,6 +423,16 @@ export default function Browser({ user, onLogout }: Props) {
             <span className={cn(roleBadge, selectedRole === 'admin' && roleBadgeAdmin)}>
               {t(`role.${selectedRole}`)}
             </span>
+            {selectedId !== null && isAdmin && selected && (
+              <button
+                type="button"
+                className={cn(iconBtn, permsOpen && 'bg-info-bg text-accent')}
+                title={t('browser.togglePerms')}
+                onClick={() => setPermsOpen((o) => !o)}
+              >
+                👥
+              </button>
+            )}
           </div>
           <div className="mb-2.5 flex items-center gap-1.5">
             <input
@@ -416,7 +466,7 @@ export default function Browser({ user, onLogout }: Props) {
           />
         </main>
 
-        {selectedId !== null && isAdmin && selected && (
+        {permsOpen && selectedId !== null && isAdmin && selected && (
           <PermissionsPanel
             folderName={selected.name}
             ownerId={selected.ownerId}
@@ -426,6 +476,7 @@ export default function Browser({ user, onLogout }: Props) {
             onGrant={handleGrant}
             onRevoke={handleRevoke}
             onRetry={() => void reloadPermissions(selectedId)}
+            onClose={() => setPermsOpen(false)}
           />
         )}
       </div>

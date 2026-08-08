@@ -17,6 +17,8 @@ interface Props {
   onGrant: (userId: string, role: Role) => void | Promise<void>;
   onRevoke: (userId: string) => void | Promise<void>;
   onRetry: () => void;
+  /** Close (hide) the panel. */
+  onClose: () => void;
 }
 
 /**
@@ -36,6 +38,7 @@ export default function PermissionsPanel({
   onGrant,
   onRevoke,
   onRetry,
+  onClose,
 }: Props) {
   const t = useT();
   const toasts = useToasts();
@@ -86,6 +89,14 @@ export default function PermissionsPanel({
       <div className="flex items-center gap-2">
         <span className="truncate font-bold">{t('perm.title', { name: folderName })}</span>
         <span className={cn(roleBadge, roleBadgeAdmin)}>{t('role.admin')}</span>
+        <button
+          type="button"
+          className="ml-auto cursor-pointer border-0 bg-transparent p-1 leading-none text-muted hover:text-danger"
+          title={t('perm.closeTitle')}
+          onClick={onClose}
+        >
+          ✕
+        </button>
       </div>
 
       <form className="flex flex-col gap-1.5" onSubmit={submitGrant}>
