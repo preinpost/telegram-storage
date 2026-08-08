@@ -19,6 +19,8 @@ export interface AppDeps {
   queue: RateLimitQueue;
   tmpDir: string;
   chatId: string | null;
+  /** Rate-limit queue interval (ms) — used to model transfer progress. */
+  queueIntervalMs: number;
   /** Telegram bot token (used for Login Widget signature verification). */
   botToken: string | null;
   /** Telegram bot username (shown by the Login Widget). null → widget hidden. */

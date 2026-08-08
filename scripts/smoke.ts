@@ -62,6 +62,7 @@ async function main(): Promise<void> {
     queue,
     tmpDir: join(config.tmpDir, 'smoke-tmp'),
     chatId: config.chatId ?? '-100telegram-storage-mock',
+    queueIntervalMs: config.queueIntervalMs,
     botToken: config.botToken,
     botUsername: config.botUsername,
     devAuth: config.devAuth,

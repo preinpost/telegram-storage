@@ -15,6 +15,9 @@ export interface UploadServiceDeps {
   queue: RateLimitQueue;
   chatId: string | null;
   tmpDir: string;
+  /** Rate-limit queue interval — part pacing is known upfront, so the
+   * progress interpolation can model wait+transfer as one linear period. */
+  queueIntervalMs: number;
 }
 
 export interface UploadInput {
@@ -67,12 +70,44 @@ export async function cleanupSpool(spool: SpooledUpload): Promise<void> {
 }
 
 /**
- * In-memory transfer progress for background uploads (fileId → parts
- * sent / total). Populated by commitUpload, read by the list route so the
- * UI can show how far the Telegram transfer has gotten. Volatile by design:
- * on restart, stale 'uploading' files are marked failed anyway.
+ * In-memory transfer progress for background uploads. Populated by
+ * commitUpload, read by the list route so the UI can show how far the
+ * Telegram transfer has gotten. Volatile by design: on restart, stale
+ * 'uploading' files are marked failed anyway.
  */
-export const uploadProgress = new Map<number, { sent: number; total: number }>();
+export interface UploadProgress {
+  /** Parts fully sent to Telegram. */
+  sent: number;
+  /** Total parts for this file. */
+  total: number;
+  /** Start time (ms epoch) of the in-flight part; 0 when idle. */
+  activeSince: number;
+  /** EMA of observed per-part transfer time (ms, queue wait excluded). */
+  avgPartMs: number;
+  /** Rate-limit queue interval (ms) — part pacing. */
+  queueIntervalMs: number;
+}
+
+export const uploadProgress = new Map<number, UploadProgress>();
+
+/**
+ * Smooth 0–100 percent for the list UI: confirmed parts plus an estimated
+ * share of the in-flight part. The estimate runs over one full part period
+ * (queue wait + transfer, slightly optimistic) so the bar advances linearly
+ * and lands near the real value right when the part completes — no stalls
+ * and no big jumps.
+ */
+export function transferPercent(prog: UploadProgress): number {
+  if (prog.total <= 0) return 0;
+  let parts = prog.sent;
+  if (prog.sent < prog.total && prog.activeSince > 0) {
+    const elapsed = Date.now() - prog.activeSince;
+    const transfer = prog.avgPartMs > 0 ? prog.avgPartMs * 0.8 : 1500;
+    const expected = transfer + prog.queueIntervalMs;
+    parts += Math.min(0.98, elapsed / expected);
+  }
+  return Math.min(100, Math.round((parts / prog.total) * 100));
+}
 
 /**
  * Phase 2 (background): split the spooled body into fixed 15MB slices, send
@@ -100,7 +135,13 @@ export async function commitUpload(
   }
   const sent: SentPart[] = [];
   const totalParts = Math.max(1, Math.ceil(spool.size / CHUNK_SIZE));
-  uploadProgress.set(fileId, { sent: 0, total: totalParts });
+  uploadProgress.set(fileId, {
+    sent: 0,
+    total: totalParts,
+    activeSince: 0,
+    avgPartMs: 0,
+    queueIntervalMs: deps.queueIntervalMs,
+  });
   try {
     const fd = await fsp.open(spool.bodyPath, 'r');
     const fileHash = createHash('sha256');
@@ -116,24 +157,35 @@ export async function commitUpload(
         }
         const checksum = sha256(buf);
         fileHash.update(buf); // cumulative full-file hash (download-cache key)
-        const result = await deps.queue.run(() =>
-          deps.tg.sendDocument({
+        const queuedAt = Date.now();
+        const prog = uploadProgress.get(fileId);
+        if (prog) prog.activeSince = queuedAt;
+        const { messageId: tgMessageId, fileId: tgFileId, transferMs } = await deps.queue.run(async () => {
+          // Measure the transfer itself (queue wait excluded) so the EMA
+          // reflects the true per-part network time.
+          const t0 = Date.now();
+          const r = await deps.tg.sendDocument({
             chatId: deps.chatId as string,
             fileName: `${input.name}.part${partIndex}`,
             data: buf,
-          }),
-        );
+          });
+          return { ...r, transferMs: Date.now() - t0 };
+        });
+        if (prog) {
+          prog.sent = partIndex + 1;
+          prog.activeSince = 0;
+          prog.avgPartMs =
+            prog.avgPartMs === 0 ? transferMs : prog.avgPartMs * 0.7 + transferMs * 0.3;
+        }
         sent.push({
           partIndex,
           offset,
           partSize,
           checksum,
-          tgMessageId: result.messageId,
+          tgMessageId: tgMessageId,
           tgChatId: deps.chatId as string,
-          tgFileId: result.fileId,
+          tgFileId: tgFileId,
         });
-        const prog = uploadProgress.get(fileId);
-        if (prog) prog.sent = partIndex + 1;
         offset += partSize;
         partIndex++;
       }
@@ -147,6 +199,7 @@ export async function commitUpload(
     await deps.db.markFileStatus(fileId, 'ready', null, now);
     return { id: fileId, name: input.name, size: spool.size, mime: input.mime, partCount: sent.length };
   } catch (err) {
+    console.error(`[upload] file #${fileId} commit failed:`, err instanceof Error ? err.message : err);
     // Roll back parts already stored in Telegram (best-effort, newest first)
     // so a failed upload leaves no orphan chunks behind.
     await rollbackSentParts(deps, sent);

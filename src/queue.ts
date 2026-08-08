@@ -36,6 +36,11 @@ export class RateLimitQueue {
 
   constructor(private readonly options: QueueOptions = DEFAULT_OPTIONS) {}
 
+  /** Configured minimum interval between executions (ms). */
+  get minInterval(): number {
+    return this.options.minIntervalMs;
+  }
+
   run<T>(fn: () => Promise<T>): Promise<T> {
     const task = this.chain.then(() => this.execute(fn));
     this.chain = task.catch(() => undefined);

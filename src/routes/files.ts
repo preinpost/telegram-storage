@@ -7,7 +7,7 @@ import type { Db, FileRow } from '../db.ts';
 import { openDownload } from '../download.ts';
 import { HttpError } from '../errors.ts';
 import { parseFilePart } from '../multipart.ts';
-import { cleanupSpool, commitUpload, spoolUpload, uploadProgress } from '../upload.ts';
+import { cleanupSpool, commitUpload, spoolUpload, transferPercent, uploadProgress } from '../upload.ts';
 import type { SpooledUpload } from '../upload.ts';
 
 /**
@@ -271,7 +271,7 @@ function toFileJson(file: FileRow): Record<string, unknown> {
     status: file.status,
     error: file.error,
     /** 0–100 percent of the Telegram transfer, null when not transferring. */
-    progress: prog ? Math.round((prog.sent / prog.total) * 100) : null,
+    progress: prog ? transferPercent(prog) : null,
     createdAt: new Date(file.created_at).toISOString(),
     updatedAt: new Date(file.updated_at).toISOString(),
   };
