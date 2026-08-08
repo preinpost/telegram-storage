@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent } from 'react';
+import { useRef, useState, type KeyboardEvent } from 'react';
 import { cn } from '../cn';
 import { useT } from '../i18n';
 import { btn, btnPrimary, btnSmall, iconBtn, iconBtnDanger, input, roleBadge } from '../ui';
@@ -31,6 +31,9 @@ export default function FolderTree({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
   const [busy, setBusy] = useState(false);
+  // setBusy 는 다음 렌더에 반영되므로, 같은 틱 안의 중복 호출(IME Enter 확정,
+  // 키보드+클릭 동시)은 ref 로 즉시 차단한다.
+  const busyRef = useRef(false);
 
   const openCreate = (parentId: string | null) => {
     setCreateParent(parentId);
@@ -39,13 +42,15 @@ export default function FolderTree({
 
   const submitCreate = async () => {
     const name = createName.trim();
-    if (!name || createParent === undefined) return;
+    if (!name || createParent === undefined || busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     try {
       await onCreate(createParent, name);
       setCreateParent(undefined);
       setCreateName('');
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
@@ -57,15 +62,17 @@ export default function FolderTree({
 
   const submitRename = async (id: string) => {
     const name = editingName.trim();
-    if (!name) {
+    if (!name || busyRef.current) {
       setEditingId(null);
       return;
     }
+    busyRef.current = true;
     setBusy(true);
     try {
       await onRename(id, name);
       setEditingId(null);
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
@@ -77,6 +84,8 @@ export default function FolderTree({
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>, action: () => void) => {
+    // 한글 IME 조합 중 Enter 는 확정 이벤트와 함께 두 번 온다 — 조합 중엔 무시
+    if (e.nativeEvent.isComposing) return;
     if (e.key === 'Enter') action();
     if (e.key === 'Escape') {
       setCreateParent(undefined);
