@@ -1,6 +1,6 @@
 {
   "name": "telegram-storage",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": true,
   "description": "Telegram-based unlimited file storage (M1+M2): Hono + TypeScript backend, SQLite metadata, 15MB chunks, mock Telegram client for token-less verification",
   "type": "module",
