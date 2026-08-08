@@ -34,17 +34,37 @@ export function authRoutes(deps: AppDeps, sessionSecret: string): Hono<AppEnv> {
     return c.json({ devAuth: deps.devAuth, botUsername: deps.botUsername ?? null });
   });
 
-  app.post('/telegram', rateLimit, async (c) => {
+  /**
+   * POST /api/auth/telegram — Telegram Login Widget callback (form data).
+   * GET  /api/auth/telegram — same, but as the widget's data-auth-url target:
+   * the browser navigates here with query params after authorization, the
+   * server verifies the HMAC and redirects back to / (SPA-safe).
+   */
+  app.all('/telegram', rateLimit, async (c) => {
     if (!deps.botToken) {
+      if (c.req.method === 'GET') {
+        return c.redirect(`/?login_error=${encodeURIComponent('telegram auth requires a bot token (TELEGRAM_BOT_TOKEN)')}`);
+      }
       throw new HttpError(503, 'telegram auth requires a bot token (TELEGRAM_BOT_TOKEN)');
     }
-    const body = await c.req.parseBody();
     const params: Record<string, string> = {};
-    for (const [key, value] of Object.entries(body)) {
-      if (typeof value === 'string') params[key] = value;
+    if (c.req.method === 'GET') {
+      for (const [key, value] of Object.entries(c.req.query())) {
+        if (typeof value === 'string') params[key] = value;
+      }
+    } else {
+      const body = await c.req.parseBody();
+      for (const [key, value] of Object.entries(body)) {
+        if (typeof value === 'string') params[key] = value;
+      }
     }
     const result = verifyTelegramAuth(params, deps.botToken);
-    if (!result.ok) throw new HttpError(401, result.reason);
+    if (!result.ok) {
+      if (c.req.method === 'GET') {
+        return c.redirect(`/?login_error=${encodeURIComponent(result.reason)}`);
+      }
+      throw new HttpError(401, result.reason);
+    }
 
     const now = Date.now();
     const displayName =
@@ -56,6 +76,7 @@ export function authRoutes(deps: AppDeps, sessionSecret: string): Hono<AppEnv> {
       now,
     );
     setSessionCookie(c, sessionSecret, user, now, secure);
+    if (c.req.method === 'GET') return c.redirect('/');
     return c.json({ user: toUserJson(user) });
   });
 

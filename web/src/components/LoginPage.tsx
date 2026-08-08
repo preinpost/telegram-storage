@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { api, errorMessage } from '../api';
 import { useI18n } from '../i18n';
 import { btn, btnPrimary, input } from '../ui';
@@ -10,48 +10,25 @@ interface Props {
   onLogin: (user: User) => void;
 }
 
-interface TelegramAuthData {
-  id: string;
-  first_name?: string;
-  last_name?: string;
-  username?: string;
-  auth_date: string;
-  hash: string;
-}
-
 export default function LoginPage({ config, onLogin }: Props) {
   const t = useI18n().t;
-  const toasts = useToasts();
-
-  const handleTelegramAuth = useCallback(
-    async (data: TelegramAuthData) => {
-      try {
-        const fields: Record<string, string> = {
-          id: String(data.id),
-          auth_date: data.auth_date,
-          hash: data.hash,
-        };
-        if (data.first_name) fields.first_name = data.first_name;
-        if (data.last_name) fields.last_name = data.last_name;
-        if (data.username) fields.username = data.username;
-        const res = await api.telegramLogin(fields);
-        onLogin(res.user);
-      } catch (err) {
-        toasts.push('error', errorMessage(err, t('login.telegramFailed')));
-      }
-    },
-    [onLogin, toasts, t],
-  );
+  // 서버가 /api/auth/telegram 검증 실패 시 /?login_error=... 로 리다이렉트한다.
+  const [loginError] = useState(() => new URLSearchParams(location.search).get('login_error'));
 
   return (
     <div className="flex h-full items-center justify-center p-4">
       <div className="w-full max-w-[380px] rounded-xl border border-border bg-panel p-8 text-center shadow-card">
         <h1 className="mb-1 text-[22px] font-bold">📁 Telegram Storage</h1>
         <p className="mb-5 text-muted">{t('login.subtitle')}</p>
+        {loginError && (
+          <p className="mb-4 break-all rounded-lg border border-danger-line bg-danger-bg p-2.5 text-[13px] text-danger-strong">
+            {t('login.telegramFailed')}: {loginError}
+          </p>
+        )}
         {config.devAuth ? (
           <DevLoginForm onLogin={onLogin} />
         ) : config.botUsername ? (
-          <TelegramWidget botUsername={config.botUsername} onAuth={handleTelegramAuth} />
+          <TelegramWidget botUsername={config.botUsername} />
         ) : (
           <p className="break-all rounded-lg border border-danger-line bg-danger-bg p-2.5 text-[13px] text-danger-strong">
             {t('login.notConfiguredIntro')} <code>DEV_AUTH=true</code> {t('login.or')}{' '}
@@ -111,28 +88,19 @@ function DevLoginForm({ onLogin }: { onLogin: (user: User) => void }) {
 }
 
 /**
- * Telegram Login Widget. The widget script reads data-* attributes off its own
- * <script> tag; data-onauth gives us the auth fields client-side so the SPA
- * can POST them itself (the server still verifies the HMAC signature).
+ * Telegram Login Widget (server-side verification).
+ * data-auth-url: 위젯이 승인을 마치면 브라우저가 해당 URL로 이동하고, 서버가
+ * HMAC을 검증해 세션을 만든 뒤 / 로 리다이렉트한다 (SPA 리로드에도 안전).
  */
-function TelegramWidget({
-  botUsername,
-  onAuth,
-}: {
-  botUsername: string;
-  onAuth: (data: TelegramAuthData) => void;
-}) {
+function TelegramWidget({ botUsername }: { botUsername: string }) {
   const t = useI18n().t;
   const containerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const w = window as unknown as { onTelegramAuth?: (data: TelegramAuthData) => void };
-    w.onTelegramAuth = onAuth;
-
     const script = document.createElement('script');
     script.async = true;
     script.src = 'https://telegram.org/js/telegram-widget.js?22';
     script.setAttribute('data-telegram-login', botUsername);
-    script.setAttribute('data-onauth', 'onTelegramAuth');
+    script.setAttribute('data-auth-url', '/api/auth/telegram');
     script.setAttribute('data-request-access', 'write');
     // telegram-widget.js 는 자기 script 태그 위치에 iframe 을 삽입한다.
     // body 끝에 붙이면 버튼이 카드 밖(페이지 하단)으로 밀려나므로, 카드 안
@@ -141,9 +109,8 @@ function TelegramWidget({
 
     return () => {
       containerRef.current?.removeChild(script);
-      delete w.onTelegramAuth;
     };
-  }, [botUsername, onAuth]);
+  }, [botUsername]);
 
   return (
     <>

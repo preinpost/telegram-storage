@@ -73,14 +73,6 @@ export const api = {
       body: JSON.stringify(displayName ? { username, displayName } : { username }),
     }),
 
-  /** POST /api/auth/telegram with the Login Widget fields (incl. hash). */
-  telegramLogin: (fields: Record<string, string>) =>
-    request<{ user: User }>('/api/auth/telegram', {
-      method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams(fields).toString(),
-    }),
-
   logout: () => request<void>('/api/auth/logout', { method: 'POST' }),
 
   folders: () => request<{ folders: FolderNode[] }>('/api/folders'),
