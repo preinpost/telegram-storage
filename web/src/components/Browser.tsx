@@ -312,7 +312,7 @@ export default function Browser({ user, onLogout }: Props) {
   useEffect(() => {
     const pending = files?.some((f) => f.status === 'uploading');
     if (!pending) return;
-    const timer = window.setInterval(() => void reloadFiles(selectedId), 2000);
+    const timer = window.setInterval(() => void reloadFiles(selectedId), 1000);
     return () => window.clearInterval(timer);
   }, [files, selectedId, reloadFiles]);
 

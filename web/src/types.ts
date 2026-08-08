@@ -49,6 +49,8 @@ export interface FileItem {
   status: 'uploading' | 'ready' | 'failed';
   /** Failure reason when status = 'failed'. */
   error: string | null;
+  /** 0–100 percent of the Telegram transfer; null when not transferring. */
+  progress: number | null;
   createdAt: string;
   updatedAt: string;
   /** Present on search results — root→folder path ([] for root files). */

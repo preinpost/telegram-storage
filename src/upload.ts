@@ -67,6 +67,14 @@ export async function cleanupSpool(spool: SpooledUpload): Promise<void> {
 }
 
 /**
+ * In-memory transfer progress for background uploads (fileId → parts
+ * sent / total). Populated by commitUpload, read by the list route so the
+ * UI can show how far the Telegram transfer has gotten. Volatile by design:
+ * on restart, stale 'uploading' files are marked failed anyway.
+ */
+export const uploadProgress = new Map<number, { sent: number; total: number }>();
+
+/**
  * Phase 2 (background): split the spooled body into fixed 15MB slices, send
  * each via the rate-limit queue, then persist parts + flip the file to
  * 'ready'. Runs after the HTTP handler has already inserted a pending
@@ -91,6 +99,8 @@ export async function commitUpload(
     throw new HttpError(500, msg);
   }
   const sent: SentPart[] = [];
+  const totalParts = Math.max(1, Math.ceil(spool.size / CHUNK_SIZE));
+  uploadProgress.set(fileId, { sent: 0, total: totalParts });
   try {
     const fd = await fsp.open(spool.bodyPath, 'r');
     const fileHash = createHash('sha256');
@@ -122,6 +132,8 @@ export async function commitUpload(
           tgChatId: deps.chatId as string,
           tgFileId: result.fileId,
         });
+        const prog = uploadProgress.get(fileId);
+        if (prog) prog.sent = partIndex + 1;
         offset += partSize;
         partIndex++;
       }
@@ -142,6 +154,7 @@ export async function commitUpload(
     await deps.db.markFileStatus(fileId, 'failed', reason.slice(0, 500));
     throw err;
   } finally {
+    uploadProgress.delete(fileId);
     await cleanupSpool(spool);
   }
 }

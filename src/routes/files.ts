@@ -7,7 +7,7 @@ import type { Db, FileRow } from '../db.ts';
 import { openDownload } from '../download.ts';
 import { HttpError } from '../errors.ts';
 import { parseFilePart } from '../multipart.ts';
-import { cleanupSpool, commitUpload, spoolUpload } from '../upload.ts';
+import { cleanupSpool, commitUpload, spoolUpload, uploadProgress } from '../upload.ts';
 import type { SpooledUpload } from '../upload.ts';
 
 /**
@@ -259,6 +259,8 @@ function parseOptionalFolderId(raw: unknown): number | null {
 }
 
 function toFileJson(file: FileRow): Record<string, unknown> {
+  // Live transfer progress (parts sent / total) for background uploads.
+  const prog = file.status === 'uploading' ? uploadProgress.get(file.id) : undefined;
   return {
     id: String(file.id),
     name: file.name,
@@ -268,6 +270,8 @@ function toFileJson(file: FileRow): Record<string, unknown> {
     ownerId: file.owner_id === null ? null : String(file.owner_id),
     status: file.status,
     error: file.error,
+    /** 0–100 percent of the Telegram transfer, null when not transferring. */
+    progress: prog ? Math.round((prog.sent / prog.total) * 100) : null,
     createdAt: new Date(file.created_at).toISOString(),
     updatedAt: new Date(file.updated_at).toISOString(),
   };

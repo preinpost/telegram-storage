@@ -95,15 +95,19 @@ const FileList = forwardRef<FileListHandle, Props>(function FileList(
     try {
       let lastAt = performance.now();
       let lastBytes = 0;
+      let lastSpeed = 0;
       await onUpload(
         next.file,
         (percent) => {
           const now = performance.now();
           const bytes = (percent / 100) * next.file.size;
           const dt = (now - lastAt) / 1000;
-          const speed = dt > 0.05 ? (bytes - lastBytes) / dt : 0;
+          // Keep the previous rate when events arrive faster than we can
+          // measure (prevents the rate badge from flickering in/out).
+          const speed = dt > 0.05 ? (bytes - lastBytes) / dt : lastSpeed;
           lastAt = now;
           lastBytes = bytes;
+          lastSpeed = speed;
           setUploads((all) =>
             all.map((u) => (u.key === next.key ? { ...u, percent, speed } : u)),
           );
@@ -221,9 +225,11 @@ const FileList = forwardRef<FileListHandle, Props>(function FileList(
                     ? t('upload.queued')
                     : `${u.percent}%`}
               </span>
-              {u.state === 'uploading' && u.speed > 0 && (
+              {/* Always rendered so the flex row width (and the progress bar
+                  track) stays stable — only the text is conditional. */}
+              {u.state === 'uploading' && (
                 <span className="w-20 shrink-0 text-right text-[11px] text-muted">
-                  {formatBytes(u.speed)}/s
+                  {u.speed > 0 ? `${formatBytes(u.speed)}/s` : ''}
                 </span>
               )}
               {u.state !== 'failed' && (
@@ -293,9 +299,6 @@ const FileList = forwardRef<FileListHandle, Props>(function FileList(
                   ) : (
                     <span>📄 {f.name}</span>
                   )}
-                  {f.status === 'uploading' && (
-                    <span className="ml-1.5 text-[11px] text-muted">{t('file.transferring')}</span>
-                  )}
                   {f.status === 'failed' && (
                     <span
                       className="ml-1.5 rounded border border-danger-line bg-danger-bg px-1 py-0.5 text-[11px] text-danger-strong"
@@ -333,10 +336,18 @@ const FileList = forwardRef<FileListHandle, Props>(function FileList(
                       >
                         {t('file.download')}
                       </a>
+                    ) : f.status === 'uploading' ? (
+                      <div className="flex w-28 flex-col items-end gap-1" title={t('file.transferring')}>
+                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-track">
+                          <div
+                            className="h-full bg-accent transition-[width] duration-300 ease-out"
+                            style={{ width: `${f.progress ?? 0}%` }}
+                          />
+                        </div>
+                        <span className="text-[11px] leading-none text-muted">{f.progress ?? 0}%</span>
+                      </div>
                     ) : (
-                      <span className="text-[11px] text-muted">
-                        {f.status === 'uploading' ? t('file.transferring') : t('file.transferFailed')}
-                      </span>
+                      <span className="text-[11px] text-muted">{t('file.transferFailed')}</span>
                     )}
                     {canWrite && !searchMode && f.status === 'ready' && (
                       <>
